@@ -1,3 +1,4 @@
+from functools import wraps
 from flask import Flask, request, jsonify
 from flask_sqlalchemy import SQLAlchemy
 from datetime import datetime, timedelta
@@ -5,6 +6,9 @@ import os
 from dotenv import load_dotenv
 import uuid
 from sqlalchemy import text
+from apscheduler.schedulers.background import BackgroundScheduler
+from werkzeug.utils import secure_filename
+
 # Load environment variables
 load_dotenv()
 
@@ -47,6 +51,47 @@ class SharedUrl(db.Model):
 NOTES_DIR = './notes'
 os.makedirs(NOTES_DIR, exist_ok=True)
 
+def token_required(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        token = request.headers.get('Authorization')
+        if not token:
+            return jsonify({"error": "Token is missing!"}), 401
+        user = User.query.filter_by(token=token).first()
+        if not user:
+            return jsonify({"error": "Invalid token!"}), 401
+        return f(*args, **kwargs)
+    return decorated
+
+UPLOAD_FOLDER = './uploads'
+ALLOWED_EXTENSIONS = {'txt', 'pdf', 'doc', 'docx'}
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+
+def allowed_file(filename):
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
+@app.route('/upload', methods=['POST'])
+@token_required
+def upload_file():
+    if 'file' not in request.files:
+        return jsonify({"error": "No file part"}), 400
+    file = request.files['file']
+    if file.filename == '':
+        return jsonify({"error": "No selected file"}), 400
+    
+    if file and allowed_file(file.filename):
+        filename = secure_filename(file.filename)
+        safe_filename = f"{uuid.uuid4()}_{filename}"
+        try:
+            file.save(os.path.join(UPLOAD_FOLDER, safe_filename))
+            return jsonify({
+                "message": "File uploaded successfully",
+                "filename": safe_filename
+            }), 201
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
+    return jsonify({"error": "File type not allowed"}), 400
+
 @app.route('/register', methods=['POST'])
 def register():
     data = request.json
@@ -81,6 +126,7 @@ def login():
     return jsonify({"token": token}), 200
 
 @app.route('/notes', methods=['POST'])
+@token_required
 def upload_note():
     data = request.json
     filename = f"{uuid.uuid4()}.txt"
@@ -102,6 +148,7 @@ def upload_note():
         return jsonify({"error": str(e)}), 500
 
 @app.route('/notes/share', methods=['POST'])
+@token_required
 def share_note():
     data = request.json
     note_id = data['note_id']
@@ -122,6 +169,7 @@ def share_note():
         return jsonify({"error": str(e)}), 500
 
 @app.route('/notes/access', methods=['GET'])
+@token_required
 def access_note():
     temp_url = request.args.get('temp_url')
     
@@ -139,6 +187,30 @@ def access_note():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+def cleanup_expired():
+    with app.app_context():
+        now = datetime.utcnow()
+        # Cleanup expired notes
+        expired_notes = Note.query.filter(Note.expires_at < now).all()
+        for note in expired_notes:
+            try:
+                os.remove(os.path.join(NOTES_DIR, note.filename))
+            except:
+                pass
+            db.session.delete(note)
+        
+        # Cleanup expired shared URLs
+        expired_urls = SharedUrl.query.filter(SharedUrl.expires_at < now).all()
+        for url in expired_urls:
+            db.session.delete(url)
+            
+        db.session.commit()
+        print(f"Cleanup completed at {now}")
+
+# Initialize scheduler
+scheduler = BackgroundScheduler()
+scheduler.add_job(func=cleanup_expired, trigger="interval", hours=1)
+
 def test_db_connection():
     try:
         with app.app_context():
@@ -154,4 +226,5 @@ def test_db_connection():
 
 if __name__ == '__main__':
     test_db_connection()
+    scheduler.start()
     app.run(debug=True)
