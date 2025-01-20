@@ -1,6 +1,6 @@
 import tkinter as tk
-from tkinter import messagebox
-from utils.api import register, login, logout
+from tkinter import messagebox, filedialog
+from utils.api import register, login, logout, upload_file
 
 class App:
     def __init__(self):
@@ -121,6 +121,17 @@ class App:
                     messagebox.showerror("Error", response.get("message", "Logout failed"))
 
         tk.Button(self.current_frame, text="Logout", command=handle_logout, font=("Arial", 12), width=20).grid(row=1, columnspan=2, pady=20)
+
+        def handle_upload():
+            file_path = filedialog.askopenfilename()
+            if file_path:
+                response = upload_file(self.token, file_path)
+                if response.get("success"):
+                    messagebox.showinfo("Success", response.get("message"))
+                else:
+                    messagebox.showerror("Error", response.get("message"))
+
+        tk.Button(self.current_frame, text="Upload File", command=handle_upload, font=("Arial", 12), width=20).grid(row=2, columnspan=2, pady=20)
 
 if __name__ == "__main__":
     app = App()

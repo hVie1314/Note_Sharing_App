@@ -58,3 +58,25 @@ def logout(auth_token):
             "success": False,
             "message": error_message
         }
+        
+
+def upload_file(auth_token, username, file_path):
+    headers = {"Authorization": f"Bearer {auth_token}"}
+    files = {'file': open(file_path, 'rb')}
+    data = {'username': username}
+    response = requests.post(f"{BASE_URL}/upload", headers=headers, files=files, data=data)
+    if response.status_code == 201:
+        return {
+            "success": True,
+            "message": "File uploaded successfully",
+            "file_path": response.json().get("file_path")
+        }
+    else:
+        try:
+            error_message = response.json().get('error')
+        except requests.exceptions.JSONDecodeError:
+            error_message = response.text
+        return {
+            "success": False,
+            "message": error_message
+        }

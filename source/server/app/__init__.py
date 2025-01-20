@@ -11,9 +11,9 @@ def create_app():
     db.init_app(app)
     
     from app.routes.auth_routes import auth_bp
-    from app.controllers.note_controller import notes
+    from app.routes.upload_routes import upload_bp
     
     app.register_blueprint(auth_bp)
-    app.register_blueprint(notes)
+    app.register_blueprint(upload_bp)
     
     return app

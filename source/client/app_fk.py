@@ -1,6 +1,6 @@
 import tkinter as tk
-from tkinter import ttk, messagebox, font
-from utils.api import register, login, logout
+from tkinter import ttk, messagebox, font, filedialog
+from utils.api import register, login, logout, upload_file
 from PIL import Image, ImageTk
 import os
 
@@ -143,12 +143,12 @@ class App:
             style='Custom.TCheckbutton').pack(side='left')
 
         def handle_login():
-            username = username_entry.get()
+            self.username = username_entry.get()
             password = password_entry.get()
-            if not username or not password:
+            if not self.username or not password:
                 messagebox.showerror("Error", "Please enter both username and password")
                 return
-            response = login(username, password)
+            response = login(self.username, password)
             if response.get("success"):
                 self.token = response.get("token")
                 self.show_dashboard()
@@ -185,7 +185,6 @@ class App:
                 self.token = None
                 # Quay về trang login
                 self.show_login_page()
-                messagebox.showinfo("Success", "Đăng xuất thành công!")
         except Exception as e:
             messagebox.showerror("Error", f"Lỗi khi đăng xuất: {str(e)}")
             
@@ -329,6 +328,16 @@ class App:
         login_link.pack(pady=10)
         login_link.bind("<Button-1>", lambda e: self.show_login_page())
 
+    def handle_upload(self):
+            file_path = filedialog.askopenfilename()
+            if file_path:
+                response = upload_file(self.token, self.username, file_path)
+                if response.get("success"):
+                    messagebox.showinfo("Success", response.get("message"))
+                else:
+                    messagebox.showerror("Error", response.get("message"))
+        
+
     def show_dashboard(self):
         # Update dashboard with new style
         if self.current_frame:
@@ -354,6 +363,13 @@ class App:
                  fg="white",
                  font=("Arial", 12)).pack(side='right', padx=20)
 
+        
+        # Upload button
+        tk.Button(self.current_frame, 
+                  text="Upload File", 
+                  command=self.handle_upload, 
+                  font=("Arial", 12)).pack(side='left', padx=80)
+        
         # ...rest of dashboard code...
 
 if __name__ == "__main__":
