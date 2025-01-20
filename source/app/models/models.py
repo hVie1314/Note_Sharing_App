@@ -4,8 +4,8 @@ class User(db.Model):
     __tablename__ = 'users'
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(80), unique=True, nullable=False)
-    password = db.Column(db.String(120), nullable=False)
-    token = db.Column(db.String(36), unique=True)
+    password = db.Column(db.String(255), nullable=False)
+    token = db.Column(db.String(255), unique=True)
 
 class Note(db.Model):
     __tablename__ = 'notes'
