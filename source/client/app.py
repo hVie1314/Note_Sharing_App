@@ -1,15 +1,37 @@
 import tkinter as tk
-from tkinter import messagebox, filedialog
+from tkinter import ttk, messagebox, font, filedialog
 from utils.api import register, login, logout, upload_file
+from PIL import Image, ImageTk
+import os
 
 class App:
     def __init__(self):
         self.root = tk.Tk()
         self.root.title("Note Sharing App")
-        self.set_window_position(800, 600)  # Kích thước lớn hơn
+        self.root.configure(bg='#ececec')
+        self.set_window_position(930, 600)
+
+        # Thêm font Poppins
+        self.load_fonts()
+        
+        # Load image
+        self.load_image()
+        
+        # Style cho ttk widgets với Poppins và màu Bootstrap
+        self.style = ttk.Style()
+        self.style.configure('Custom.TEntry', 
+            padding=10,
+            font=('Poppins', 12),
+            background='#f8f9fa')
+        self.style.configure('Custom.TButton',
+            font=('Poppins', 12),
+            padding=10)
+        self.style.configure('Custom.TCheckbutton',
+            background='white',
+            font=('Poppins', 10))
 
         self.current_frame = None
-        self.token = None  # Lưu token sau khi đăng nhập
+        self.token = None
         self.show_login_page()
 
     def set_window_position(self, width, height):
@@ -26,30 +48,125 @@ class App:
         frame.grid_columnconfigure(0, weight=1)
         frame.grid_columnconfigure(2, weight=1)
 
+    def load_fonts(self):
+        # Cấu hình font và màu mặc định
+        self.root.option_add("*Font", "Poppins 10")
+        self.root.option_add("*Background", "white")
+        self.root.option_add("*Foreground", "#212529")
+
+    def load_image(self):
+        # Load và resize hình ảnh
+        image_path = os.path.join(os.path.dirname(__file__), "images", "1.png")
+        self.logo_image = Image.open(image_path)
+        self.logo_image = self.logo_image.resize((250, 250))
+        self.logo_photo = ImageTk.PhotoImage(self.logo_image)
+
     def show_login_page(self):
         if self.current_frame:
             self.current_frame.destroy()
 
-        self.current_frame = tk.Frame(self.root)
-        self.current_frame.pack(fill="both", expand=True, padx=20, pady=20)
-        self.center_frame(self.current_frame)
+        # Container chính với shadow
+        self.current_frame = tk.Frame(self.root, bg='white',
+            highlightbackground='#dee2e6',
+            highlightthickness=1,
+            relief='raised')
+        self.current_frame.pack(pady=50, padx=50)
 
-        tk.Label(self.current_frame, text="Login", font=("Arial", 18)).grid(row=1, column=1, pady=20)
+        # Left Box với brand section
+        left_frame = tk.Frame(self.current_frame,
+            bg='#103cbe',
+            width=400,
+            height=500)
+        left_frame.pack(side='left', fill='both')
 
-        tk.Label(self.current_frame, text="Username", font=("Arial", 12)).grid(row=2, column=0, sticky="e", padx=10, pady=5)
-        username_entry = tk.Entry(self.current_frame, font=("Arial", 12), width=30)
-        username_entry.grid(row=2, column=1, padx=10, pady=5)
+        # Thêm hình ảnh vào trước text
+        image_label = tk.Label(
+            left_frame,
+            image=self.logo_photo,
+            bg="#103cbe"
+        )
+        image_label.pack(pady=(50,20))
+        
+        tk.Label(left_frame,
+            text="Be Verified",
+            font=('Courier New', 24, 'bold'),
+            fg="white",
+            bg="#103cbe").pack(pady=10)
 
-        tk.Label(self.current_frame, text="Password", font=("Arial", 12)).grid(row=3, column=0, sticky="e", padx=10, pady=5)
-        password_entry = tk.Entry(self.current_frame, font=("Arial", 12), show="*", width=30)
-        password_entry.grid(row=3, column=1, padx=10, pady=5)
+        tk.Label(left_frame,
+            text="Note Sharing App",
+            font=('Courier New', 10),
+            fg="white",
+            bg="#103cbe",
+            wraplength=250).pack()
+
+        # Right Box với form đăng nhập
+        right_frame = tk.Frame(self.current_frame,
+            bg='white',
+            padx=40,
+            pady=40)
+        right_frame.pack(side='right', fill='both')
+
+        # Headers 
+        tk.Label(right_frame,
+            text="Hello, Again",
+            font=('Poppins', 24, 'bold'),
+            bg="white").pack(anchor='w')
+            
+        tk.Label(right_frame,
+            text="We are happy to have you back.",
+            font=('Poppins', 12),
+            fg="#6c757d",
+            bg="white").pack(anchor='w', pady=(0,20))
+        
+        # Form fields
+        fields = [
+            ("Username", ""),
+            ("Password", "*")
+        ]
+
+        entries = {}
+
+        for field, show in fields:
+            frame = tk.Frame(right_frame, bg='white')
+            frame.pack(fill='x', pady=10)
+
+            entry = ttk.Entry(
+                frame,
+                style='Custom.TEntry',
+                show='',  # Ban đầu không có `show`
+                width=30
+            )
+            entry.insert(0, field)  # Placeholder mặc định
+            entry.pack(fill='x', padx=5)
+
+            # Xóa placeholder khi focus
+            def on_focus_in(event, field=field, show=show):
+                if event.widget.get() == field:
+                    event.widget.delete(0, 'end')
+                    if show == "*":
+                        event.widget.config(show='*')  # Ẩn ký tự nhập nếu là mật khẩu
+
+            # Đặt lại placeholder khi mất focus
+            def on_focus_out(event, field=field, show=show):
+                if event.widget.get() == '':
+                    event.widget.insert(0, field)
+                    event.widget.config(show='')  # Xóa `show` nếu ô trống
+
+            entry.bind('<FocusIn>', on_focus_in)
+            entry.bind('<FocusOut>', on_focus_out)
+            entries[field] = entry
 
         def handle_login():
-            username = username_entry.get()
-            password = password_entry.get()
-            if not username or not password:
-                messagebox.showerror("Error", "Please enter both username and password")
+            username = entries["Username"].get()
+            password = entries["Password"].get() 
+            
+            # Kiểm tra các trường không được để trống
+            if username == "Username" or password == "Password":
+                messagebox.showerror("Error", "Please fill in all the required information!")
                 return
+                
+            # Gọi API đăng nhập
             response = login(username, password)
             if response.get("success"):
                 self.token = response.get("token")
@@ -57,81 +174,232 @@ class App:
             else:
                 messagebox.showerror("Error", response.get("message", "Login failed"))
 
-        tk.Button(self.current_frame, text="Login", command=handle_login, font=("Arial", 12), width=20).grid(row=4, column=1, pady=20)
+        # Remember me với style mới
+        remember_frame = tk.Frame(right_frame, bg='white')
+        remember_frame.pack(fill='x', pady=10)
+        ttk.Checkbutton(remember_frame,
+            text="Remember Me",
+            style='Custom.TCheckbutton').pack(side='left')
+        
+        # Login button với màu Bootstrap primary
+        login_btn = tk.Button(right_frame,
+            text="Login",
+            command=handle_login,
+            bg="#103cbe", 
+            fg="white", 
+            font=('Poppins', 12, 'bold'),
+            width=25,
+            pady=10,
+            relief='flat')
+        login_btn.pack(pady=20)
 
-        # Link to Register
-        register_link = tk.Label(self.current_frame, text="Don't have an account?", font=("Arial", 10, "underline"), fg="blue", cursor="hand2")
-        register_link.grid(row=5, column=1, pady=5)
+        # Register link với màu link Bootstrap
+        register_link = tk.Label(right_frame,
+            text="Don't have account? Sign Up",
+            font=('Poppins', 10),
+            fg="#0d6efd",
+            cursor="hand2",
+            bg="white")
+        register_link.pack()
         register_link.bind("<Button-1>", lambda e: self.show_register_page())
 
+    def handle_logout(self):
+        try:
+            if self.token:
+                # Gọi API logout
+                logout(self.token)
+                self.token = None
+                # Quay về trang login
+                self.show_login_page()
+        except Exception as e:
+            messagebox.showerror("Error", f"Error when logout: {str(e)}")
+            
     def show_register_page(self):
         if self.current_frame:
             self.current_frame.destroy()
 
-        self.current_frame = tk.Frame(self.root)
-        self.current_frame.pack(fill="both", expand=True, padx=20, pady=20)
-        self.center_frame(self.current_frame)
+        # Container chính 
+        self.current_frame = tk.Frame(self.root, bg='white',
+            highlightbackground='#dee2e6',
+            highlightthickness=1,
+            relief='raised')
+        self.current_frame.pack(pady=50, padx=50)
 
-        tk.Label(self.current_frame, text="Register", font=("Arial", 18)).grid(row=1, column=1, pady=20)
+        # Left Box
+        left_frame = tk.Frame(self.current_frame,
+            bg='#103cbe',
+            width=400,
+            height=500)
+        left_frame.pack(side='left', fill='both')
 
-        tk.Label(self.current_frame, text="Username", font=("Arial", 12)).grid(row=2, column=0, sticky="e", padx=10, pady=5)
-        username_entry = tk.Entry(self.current_frame, font=("Arial", 12), width=30)
-        username_entry.grid(row=2, column=1, padx=10, pady=5)
+        # Thêm hình ảnh
+        image_label = tk.Label(
+            left_frame,
+            image=self.logo_photo,
+            bg="#103cbe"
+        )
+        image_label.pack(pady=(50,20))
 
-        tk.Label(self.current_frame, text="Password", font=("Arial", 12)).grid(row=3, column=0, sticky="e", padx=10, pady=5)
-        password_entry = tk.Entry(self.current_frame, font=("Arial", 12), show="*", width=30)
-        password_entry.grid(row=3, column=1, padx=10, pady=5)
+        # Text bên trái
+        tk.Label(left_frame,
+            text="Join Us Now",
+            font=('Courier New', 24, 'bold'),
+            fg="white",
+            bg="#103cbe").pack(pady=10)
+        
+        tk.Label(left_frame,
+            text="Create an account to access all features.",
+            font=('Courier New', 10),
+            fg="white",
+            bg="#103cbe",
+            wraplength=250).pack()
+
+        # Right Box
+        right_frame = tk.Frame(self.current_frame,
+            bg='white',
+            padx=40,
+            pady=40)
+        right_frame.pack(side='right', fill='both')
+
+        # Headers
+        tk.Label(right_frame,
+            text="Sign Up",
+            font=('Poppins', 24, 'bold'),
+            bg="white").pack(anchor='w')
+        
+        tk.Label(right_frame,
+            text="Create your account",
+            font=('Poppins', 12),
+            fg="#6c757d",
+            bg="white").pack(anchor='w', pady=(0,20))
+
+        # Form fields
+        fields = [
+            ("Username", ""),
+            ("Password", "*"),
+            ("Confirm Password", "*")
+        ]
+
+        entries = {}
+
+        for field, show in fields:
+            frame = tk.Frame(right_frame, bg='white')
+            frame.pack(fill='x', pady=10)
+
+            entry = ttk.Entry(
+                frame,
+                style='Custom.TEntry',
+                show='',  # Ban đầu không có `show`
+                width=30
+            )
+            entry.insert(0, field)  # Placeholder mặc định
+            entry.pack(fill='x', padx=5)
+
+            # Xóa placeholder khi focus
+            def on_focus_in(event, field=field, show=show):
+                if event.widget.get() == field:
+                    event.widget.delete(0, 'end')
+                    if show == "*":
+                        event.widget.config(show='*')  # Ẩn ký tự nhập nếu là mật khẩu
+
+            # Đặt lại placeholder khi mất focus
+            def on_focus_out(event, field=field, show=show):
+                if event.widget.get() == '':
+                    event.widget.insert(0, field)
+                    event.widget.config(show='')  # Xóa `show` nếu ô trống
+
+            entry.bind('<FocusIn>', on_focus_in)
+            entry.bind('<FocusOut>', on_focus_out)
+            entries[field] = entry
 
         def handle_register():
-            username = username_entry.get()
-            password = password_entry.get()
-            if not username or not password:
-                messagebox.showerror("Error", "Please enter both username and password")
+            username = entries["Username"].get()
+            password = entries["Password"].get() 
+            confirm_password = entries["Confirm Password"].get()
+            
+            # Kiểm tra các trường không được để trống
+            if username == "Username" or password == "Password" or confirm_password == "Confirm Password":
+                messagebox.showerror("Error", "Please fill in all the required information!")
                 return
+                
+            # Kiểm tra mật khẩu xác nhận
+            if password != confirm_password:
+                messagebox.showerror("Error", "Password confirmation does not match!")
+                return
+                
+            # Gọi API đăng ký
             response = register(username, password)
             if response.get("success"):
-                messagebox.showinfo("Success", "Registration successful, please login")
+                messagebox.showinfo("Success", "Register successfully!")
                 self.show_login_page()
             else:
-                messagebox.showerror("Error", response.get("message", "Registration failed"))
+                messagebox.showerror("Error", response.get("message", "Fail to register!"))
 
-        tk.Button(self.current_frame, text="Register", command=handle_register, font=("Arial", 12), width=20).grid(row=4, column=1, pady=20)
+        # Register button
+        register_btn = tk.Button(right_frame,
+            text="Register",
+            command=handle_register,
+            bg="#103cbe",
+            fg="white", 
+            font=('Poppins', 12, 'bold'),
+            width=25,
+            pady=10,
+            relief='flat')
+        register_btn.pack(pady=20)
 
-        # Link to Login
-        login_link = tk.Label(self.current_frame, text="Have an account?", font=("Arial", 10, "underline"), fg="blue", cursor="hand2")
-        login_link.grid(row=5, column=1, pady=5)
+        # Login link
+        login_link = tk.Label(right_frame,
+            text="Already have an account? Login",
+            font=("Poppins", 10),
+            fg="#0d6efd",
+            cursor="hand2",
+            bg="white")
+        login_link.pack(pady=10)
         login_link.bind("<Button-1>", lambda e: self.show_login_page())
 
-    def show_dashboard(self):
-        if self.current_frame:
-            self.current_frame.destroy()
-
-        self.current_frame = tk.Frame(self.root)
-        self.current_frame.pack(fill="both", expand=True, padx=20, pady=20)
-
-        tk.Label(self.current_frame, text="Dashboard", font=("Arial", 18)).grid(row=0, columnspan=2, pady=20)
-
-        def handle_logout():
-            if self.token:
-                response = logout(self.token)
-                if response.get("success"):
-                    self.token = None
-                    self.show_login_page()
-                else:
-                    messagebox.showerror("Error", response.get("message", "Logout failed"))
-
-        tk.Button(self.current_frame, text="Logout", command=handle_logout, font=("Arial", 12), width=20).grid(row=1, columnspan=2, pady=20)
-
-        def handle_upload():
+    def handle_upload(self):
             file_path = filedialog.askopenfilename()
             if file_path:
-                response = upload_file(self.token, file_path)
+                response = upload_file(self.token, self.username, file_path)
                 if response.get("success"):
                     messagebox.showinfo("Success", response.get("message"))
                 else:
                     messagebox.showerror("Error", response.get("message"))
+        
 
-        tk.Button(self.current_frame, text="Upload File", command=handle_upload, font=("Arial", 12), width=20).grid(row=2, columnspan=2, pady=20)
+    def show_dashboard(self):
+        # Update dashboard with new style
+        if self.current_frame:
+            self.current_frame.destroy()
+
+        self.current_frame = tk.Frame(self.root, bg='white')
+        self.current_frame.pack(fill="both", expand=True, padx=20, pady=20)
+
+        # Dashboard header
+        header_frame = tk.Frame(self.current_frame, bg='white')
+        header_frame.pack(fill='x', pady=20)
+        
+        tk.Label(header_frame, 
+                text="Dashboard", 
+                font=("Arial", 24, "bold"),
+                bg='white').pack(side='left', padx=20)
+
+        # Logout button với style mới
+        tk.Button(header_frame,
+                 text="Logout",
+                 command=self.handle_logout,
+                 bg="#103cbe",
+                 fg="white",
+                 font=("Arial", 12)).pack(side='right', padx=20)
+
+        
+        # Upload button
+        tk.Button(self.current_frame, 
+                  text="Upload File", 
+                  command=self.handle_upload, 
+                  font=("Arial", 12)).pack(side='left', padx=80)
+        
+        # ...rest of dashboard code...
 
 if __name__ == "__main__":
     app = App()
