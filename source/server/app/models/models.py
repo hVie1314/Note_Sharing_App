@@ -13,6 +13,8 @@ class Note(db.Model):
     filename = db.Column(db.String(100), nullable=False)
     encryption_key = db.Column(db.String(100), nullable=False)
     expires_at = db.Column(db.DateTime)
+    username = db.Column(db.String(80), nullable=False) 
+    file_path = db.Column(db.String(255), nullable=False)
 
 class SharedUrl(db.Model):
     __tablename__ = 'shared_urls'
