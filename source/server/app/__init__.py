@@ -10,7 +10,7 @@ def create_app():
     
     db.init_app(app)
     
-    from app.routes.auth_view import auth_bp
+    from app.routes.auth_routes import auth_bp
     from app.controllers.note_controller import notes
     
     app.register_blueprint(auth_bp)
