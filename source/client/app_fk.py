@@ -193,28 +193,141 @@ class App:
         if self.current_frame:
             self.current_frame.destroy()
 
-        # Container chính
-        self.current_frame = tk.Frame(self.root, bg='white')
-        self.current_frame.pack(pady=50)
+        # Container chính 
+        self.current_frame = tk.Frame(self.root, bg='white',
+            highlightbackground='#dee2e6',
+            highlightthickness=1,
+            relief='raised')
+        self.current_frame.pack(pady=50, padx=50)
 
         # Left Box
-        left_frame = tk.Frame(self.current_frame, bg='#103cbe', width=400, height=500)
+        left_frame = tk.Frame(self.current_frame,
+            bg='#103cbe',
+            width=400,
+            height=500)
         left_frame.pack(side='left', fill='both')
-        
-        tk.Label(left_frame, text="Join Us", 
-                font=("Courier", 24, "bold"),
-                fg="white", bg="#103cbe").pack(pady=20)
-        tk.Label(left_frame, text="Create your account today.",
-                font=("Courier", 10),
-                fg="white", bg="#103cbe",
-                wraplength=250).pack()
 
-        # Right Box - Register form
-        right_frame = tk.Frame(self.current_frame, bg='white', padx=40, pady=40)
+        # Thêm hình ảnh
+        image_label = tk.Label(
+            left_frame,
+            image=self.logo_photo,
+            bg="#103cbe"
+        )
+        image_label.pack(pady=(50,20))
+
+        # Text bên trái
+        tk.Label(left_frame,
+            text="Join Us Now",
+            font=('Courier New', 24, 'bold'),
+            fg="white",
+            bg="#103cbe").pack(pady=10)
+        
+        tk.Label(left_frame,
+            text="Create an account to access all features.",
+            font=('Courier New', 10),
+            fg="white",
+            bg="#103cbe",
+            wraplength=250).pack()
+
+        # Right Box
+        right_frame = tk.Frame(self.current_frame,
+            bg='white',
+            padx=40,
+            pady=40)
         right_frame.pack(side='right', fill='both')
 
-        # Similar structure to login page but with register fields...
-        # ...rest of register page code...
+        # Headers
+        tk.Label(right_frame,
+            text="Sign Up",
+            font=('Poppins', 24, 'bold'),
+            bg="white").pack(anchor='w')
+        
+        tk.Label(right_frame,
+            text="Create your account",
+            font=('Poppins', 12),
+            fg="#6c757d",
+            bg="white").pack(anchor='w', pady=(0,20))
+
+        # Form fields 
+        fields = [
+            ("Username", ""),
+            ("Password", "*"),
+            ("Confirm Password", "*")
+        ]
+
+        entries = {}
+        for field, show in fields:
+            frame = tk.Frame(right_frame, bg='white')
+            frame.pack(fill='x', pady=10)
+            
+            entry = ttk.Entry(frame,
+                style='Custom.TEntry',
+                show=show,
+                width=30)
+            entry.insert(0, field)
+            entry.pack(fill='x')
+            
+            # Xóa placeholder khi focus 
+            def on_focus_in(event, field=field):
+                if event.widget.get() == field:
+                    event.widget.delete(0, 'end')
+                    if 'password' in field.lower():
+                        event.widget.config(show='*')
+                        
+            def on_focus_out(event, field=field):
+                if event.widget.get() == '':
+                    event.widget.insert(0, field)
+                    if 'password' in field.lower():
+                        event.widget.config(show='')
+                        
+            entry.bind('<FocusIn>', on_focus_in)
+            entry.bind('<FocusOut>', on_focus_out)
+            entries[field] = entry
+
+        def handle_register():
+            username = entries["Username"].get()
+            password = entries["Password"].get() 
+            confirm_password = entries["Confirm Password"].get()
+            
+            # Kiểm tra các trường không được để trống
+            if username == "Username" or password == "Password" or confirm_password == "Confirm Password":
+                messagebox.showerror("Error", "Vui lòng điền đầy đủ thông tin!")
+                return
+                
+            # Kiểm tra mật khẩu xác nhận
+            if password != confirm_password:
+                messagebox.showerror("Error", "Mật khẩu xác nhận không khớp!")
+                return
+                
+            # Gọi API đăng ký
+            response = register(username, password)
+            if response.get("success"):
+                messagebox.showinfo("Success", "Đăng ký thành công!")
+                self.show_login_page()
+            else:
+                messagebox.showerror("Error", response.get("message", "Đăng ký thất bại!"))
+
+        # Register button
+        register_btn = tk.Button(right_frame,
+            text="Register",
+            command=handle_register,
+            bg="#103cbe",
+            fg="white", 
+            font=('Poppins', 12, 'bold'),
+            width=25,
+            pady=10,
+            relief='flat')
+        register_btn.pack(pady=20)
+
+        # Login link
+        login_link = tk.Label(right_frame,
+            text="Already have an account? Login",
+            font=("Poppins", 10),
+            fg="#0d6efd",
+            cursor="hand2",
+            bg="white")
+        login_link.pack(pady=10)
+        login_link.bind("<Button-1>", lambda e: self.show_login_page())
 
     def show_dashboard(self):
         # Update dashboard with new style
