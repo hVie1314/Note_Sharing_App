@@ -1,6 +1,6 @@
 import tkinter as tk
 from tkinter import ttk, messagebox, font, filedialog
-from utils.api import register, login, logout, upload_file
+from utils.api import register, login, logout, upload_file, get_users
 from PIL import Image, ImageTk
 import os
 
@@ -368,41 +368,257 @@ class App:
                 else:
                     messagebox.showerror("Error", response.get("message"))
         
+    # Hàm gửi tin nhắn
+    def send_message(self):
+        try:
+            if not hasattr(self, 'selected_user'):
+                messagebox.showwarning("Warning", "Please select a user to chat with")
+                return
+                
+            message = self.message_entry.get().strip()
+            if not message:
+                return
+                
+            # TODO: Implement send message API call
+            print(f"Sending message to {self.selected_user}: {message}")
+            
+            # Clear input after sending
+            self.message_entry.delete(0, tk.END)
+            
+            # Add message to chat area (temporary)
+            self.add_message_to_chat(self.username, message)
+            
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to send message: {str(e)}")
+    
+    def add_message_to_chat(self, sender, message):
+        message_frame = tk.Frame(self.messages_frame, bg='white')
+        message_frame.pack(fill='x', padx=10, pady=5)
+        
+        tk.Label(
+            message_frame,
+            text=f"{sender}: {message}",
+            font=('Poppins', 10),
+            bg='white',
+            anchor='w',
+            wraplength=350
+        ).pack(fill='x')
 
     def show_dashboard(self):
-        # Update dashboard with new style
         if self.current_frame:
             self.current_frame.destroy()
 
-        self.current_frame = tk.Frame(self.root, bg='white')
-        self.current_frame.pack(fill="both", expand=True, padx=20, pady=20)
+        # Frame chính
+        self.current_frame = tk.Frame(self.root, bg='#f0f2f5')  # Background màu xám nhạt
+        self.current_frame.pack(fill="both", expand=True)
 
-        # Dashboard header
-        header_frame = tk.Frame(self.current_frame, bg='white')
-        header_frame.pack(fill='x', pady=20)
+        # Taskbar
+        taskbar = tk.Frame(self.current_frame, bg='#103cbe', height=50)
+        taskbar.pack(fill='x')
         
-        tk.Label(header_frame, 
-                text="Dashboard", 
-                font=("Arial", 24, "bold"),
-                bg='white').pack(side='left', padx=20)
+        # Dashboard label
+        tk.Label(taskbar, text="Dashboard", font=('Poppins', 14, 'bold'),
+            bg='#103cbe', fg='white').pack(side='left', padx=20)
+        
+        # User info frame
+        right_frame = tk.Frame(taskbar, bg='#103cbe')
+        right_frame.pack(side='right', padx=20)
+        tk.Label(right_frame, text=self.username, font=('Poppins', 12),
+            bg='#103cbe', fg='white').pack(side='left', padx=(0, 10))
+        tk.Button(right_frame, text="Logout", font=('Poppins', 10),
+            bg='white', fg='#103cbe', command=self.handle_logout).pack(side='left')
 
-        # Logout button với style mới
-        tk.Button(header_frame,
-                 text="Logout",
-                 command=self.handle_logout,
-                 bg="#103cbe",
-                 fg="white",
-                 font=("Arial", 12)).pack(side='right', padx=20)
+        # Container cho 3 phần chính
+        content = tk.Frame(self.current_frame, bg='#f0f2f5')
+        content.pack(fill='both', expand=True, padx=20, pady=20)
+        content.grid_columnconfigure(0, weight=2)  # Users list
+        content.grid_columnconfigure(1, weight=3)  # Chat area 
+        content.grid_columnconfigure(2, weight=2) # Chat area rộng gấp 2
 
+        # Set chiều cao cố định cho container
+        window_height = self.root.winfo_height()
+        frame_height = window_height - 120  # Trừ đi chiều cao của taskbar và padding
+
+        # 1. Users List với border và chiều cao cố định
+        users_frame = tk.Frame(content, bg='white', width=300, height=frame_height,
+            highlightbackground='#dee2e6',
+            highlightthickness=1,
+            relief='ridge',
+            bd=0)
+        users_frame.grid(row=0, column=0, sticky='nsew', padx=10, pady=10)
+        users_frame.grid_propagate(False)  # Giữ kích thước cố định
+        users_frame.pack_propagate(False)  # Ngăn co giãn theo nội dung
+
+        # 2. Chat Area với border và chiều cao cố định
+        chat_frame = tk.Frame(content, bg='white', width=500, height=frame_height,
+            highlightbackground='#dee2e6',
+            highlightthickness=1,
+            relief='ridge',
+            bd=0)
+        chat_frame.grid(row=0, column=1, sticky='nsew', padx=10, pady=10)
+        chat_frame.grid_propagate(False)
+
+        # 3. Notes List với border và chiều cao cố định
+        notes_frame = tk.Frame(content, bg='white', width=300, height=frame_height,
+            highlightbackground='#dee2e6',
+            highlightthickness=1,
+            relief='ridge',
+            bd=0)
+        notes_frame.grid(row=0, column=2, sticky='nsew', padx=10, pady=10)
+        notes_frame.grid_propagate(False)
+        notes_frame.pack_propagate(False)
+
+        # Setup scrollable content
+        self.setup_users_list(users_frame)
+        self.setup_chat_area(chat_frame)
+        self.setup_notes_list(notes_frame)
+        
+    def setup_users_list(self, frame):
+        # Header
+        header = tk.Label(frame, text="Chat", font=('Poppins', 14, 'bold'),
+            bg='white')
+        header.pack(pady=10)
+
+        # Scrollable container
+        canvas = tk.Canvas(frame, bg='white', highlightthickness=0)
+        scrollbar = ttk.Scrollbar(frame, orient="vertical", command=canvas.yview)
+        scrollable_frame = tk.Frame(canvas, bg='white')
+        users_list_frame = tk.Frame(canvas, bg='white')
+
+        users_list_frame.bind(
+        "<Configure>",
+        lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+        )
+        canvas.create_window((0, 0), window=users_list_frame, anchor="nw")
+
+        try:
+            response = get_users(self.token)
+            if response.get("success"):
+                users = response.get("users", [])
+                for user in users:
+                    if user['username'] != self.username:
+                        user_frame = tk.Frame(users_list_frame, bg='white', cursor='hand2')
+                        user_frame.pack(fill='x', pady=2)
+                    user_frame.bind('<Button-1>', lambda e, u=user['username']: self.select_user(u))
+                    
+                    # User label with hover effect
+                    user_label = tk.Label(
+                        user_frame,
+                        text=user['username'],
+                        font=('Poppins', 12),
+                        bg='white',
+                        anchor='w',
+                        padx=20,
+                        pady=10
+                    )
+                    user_label.pack(fill='x')
+                    
+                    # Hover effects
+                    user_frame.bind('<Enter>', lambda e, f=user_frame: f.configure(bg='#f0f2f5'))
+                    user_frame.bind('<Leave>', lambda e, f=user_frame: f.configure(bg='white'))
+                    user_label.bind('<Enter>', lambda e, l=user_label: l.configure(bg='#f0f2f5'))
+                    user_label.bind('<Leave>', lambda e, l=user_label: l.configure(bg='white'))
+                    
+        except Exception as e:
+            print(f"Error fetching users: {str(e)}")
+        # Pack layout
+        canvas.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
+
+    def setup_chat_area(self, frame):
+        # Header
+        header = tk.Frame(frame, bg='#f8f9fa', height=50)
+        header.pack(fill='x')
+        header.pack_propagate(False)
+    
+        # Label tên user trong header
+        self.chat_user_label = tk.Label(
+            header,
+            text="Select a user to chat",  # Text mặc định
+            font=('Poppins', 14, 'bold'),
+            bg='white'
+        )
+        self.chat_user_label.pack(side='left', padx=20, pady=15)
+        
+        # Divider line dưới header
+        separator = ttk.Separator(frame, orient='horizontal')
+        separator.pack(fill='x')
+        
+        # Messages area with scroll
+        messages_canvas = tk.Canvas(frame, bg='white')
+        messages_scrollbar = ttk.Scrollbar(frame, orient="vertical", command=messages_canvas.yview)
+        self.messages_frame = tk.Frame(messages_canvas, bg='white')
+
+        self.messages_frame.bind(
+            "<Configure>",
+            lambda e: messages_canvas.configure(scrollregion=messages_canvas.bbox("all"))
+        )
+
+        messages_canvas.create_window((0, 0), window=self.messages_frame, anchor="nw", width=messages_canvas.winfo_reqwidth())
+        messages_canvas.configure(yscrollcommand=messages_scrollbar.set)
+
+        # Input area
+        input_frame = tk.Frame(frame, bg='white', height=60)
+        input_frame.pack(side='bottom', fill='x', padx=10, pady=10)
+        input_frame.pack_propagate(False)
+
+        self.message_entry = tk.Entry(input_frame, 
+            font=('Poppins', 12),
+            bg='#f0f2f5')
+        self.message_entry.pack(side='left', fill='both', expand=True, padx=(0, 10), pady=10)
+
+        send_btn = tk.Button(input_frame,
+            text="Send",
+            bg='#103cbe',
+            fg='white',
+            font=('Poppins', 10),
+            command=self.send_message)
+        send_btn.pack(side='right', pady=10)
+
+        # Pack messages area
+        messages_canvas.pack(side="left", fill="both", expand=True)
+        messages_scrollbar.pack(side="right", fill="y")
+
+    def setup_notes_list(self, frame):
+        # Header
+        header = tk.Frame(frame, bg='white', height=50)
+        header.pack(fill='x')
+        tk.Label(header,
+            text="My Notes",
+            font=('Poppins', 14, 'bold'),
+            bg='white').pack(pady=10)
         
         # Upload button
-        tk.Button(self.current_frame, 
-                  text="Upload File", 
-                  command=self.handle_upload, 
-                  font=("Arial", 12)).pack(side='left', padx=80)
+        upload_btn = tk.Button(frame,
+            text="Upload Note",
+            bg='#103cbe',
+            fg='white',
+            font=('Poppins', 10),
+            width=20,
+            command=self.handle_upload)
+        upload_btn.pack(pady=10)
         
-        # ...rest of dashboard code...
+        # Notes list with scroll
+        notes_canvas = tk.Canvas(frame, bg='white')
+        notes_scrollbar = ttk.Scrollbar(frame, orient="vertical", command=notes_canvas.yview)
+        self.notes_frame = tk.Frame(notes_canvas, bg='white')
 
+        self.notes_frame.bind(
+            "<Configure>",
+            lambda e: notes_canvas.configure(scrollregion=notes_canvas.bbox("all"))
+        )
+
+        notes_canvas.create_window((0, 0), window=self.notes_frame, anchor="nw", width=notes_canvas.winfo_reqwidth())
+        notes_canvas.configure(yscrollcommand=notes_scrollbar.set)
+
+        # Pack notes list
+        notes_canvas.pack(side="left", fill="both", expand=True)
+        notes_scrollbar.pack(side="right", fill="y")
+
+    def select_user(self, username):
+        self.selected_user = username
+        self.chat_user_label.configure(text=username)
+        # TODO: Load chat history
 if __name__ == "__main__":
     app = App()
     app.root.mainloop()
