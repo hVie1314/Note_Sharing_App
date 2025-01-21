@@ -1,5 +1,5 @@
 from flask import Blueprint, request
-from app.controllers.auth_controller import register_user, login_user, logout_user
+from app.controllers.auth_controller import register_user, login_user, logout_user, get_all_users
 from app.utils.decorators import token_required
 
 auth_bp = Blueprint('auth', __name__)
@@ -19,3 +19,8 @@ def login():
 def logout():
     token = request.headers.get('Authorization').split(" ")[1]
     return logout_user(token)
+
+@auth_bp.route('/auth/users', methods=['GET'])
+@token_required  
+def get_users():
+    return get_all_users()

@@ -1,13 +1,9 @@
-from flask import request, jsonify, Blueprint
-from app.models.models import Note
-from app.utils.decorators import token_required
-from app.models.models import SharedUrl
+from flask import Blueprint, request, jsonify
+from app.models.models import Note, SharedUrl
+from app.utils.decorators import token_required 
+from app.utils.encryption import encrypt_note, decrypt_note
 from app import db
-from client.utils.encryption import encrypt_note, decrypt_note
-from datetime import datetime, timedelta
-import os
-from werkzeug.utils import secure_filename
-from config import Config
+from datetime import datetime
 
 notes = Blueprint('notes', __name__)
 
@@ -43,7 +39,7 @@ def create_note():
 # Route upload file, mã hóa nội dung file trước khi lưu
 @notes.route('/notes/upload', methods=['POST'])
 @token_required
-def create_note():
+def upload_file():    # Đổi tên hàm từ create_note() thành upload_file()
     try:
         # Lấy thông tin từ yêu cầu
         data = request.json

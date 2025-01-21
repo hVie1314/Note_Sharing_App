@@ -1,8 +1,11 @@
 import requests
-from utils.encryption import encrypt_note, decrypt_note
+from .encryption import encrypt_note, decrypt_note
+from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+from cryptography.hazmat.backends import default_backend
+from cryptography.hazmat.primitives import padding
+import os
 
 BASE_URL = "http://127.0.0.1:5000"  # Địa chỉ API server
-
 
 def register(username, password):
     response = requests.post(f"{BASE_URL}/auth/register", json={"username": username, "password": password})
@@ -105,7 +108,24 @@ def fetch_and_decrypt_note(auth_token, note_id, password):
     else:
         return {"success": False, "message": response.text}
 
-
+def get_users(auth_token):
+    headers = {"Authorization": f"Bearer {auth_token}"}
+    response = requests.get(f"{BASE_URL}/auth/users", headers=headers)
+    
+    if response.status_code == 200:
+        return {
+            "success": True,
+            "users": response.json().get("users")
+        }
+    else:
+        try:
+            error_message = response.json().get('error')
+        except requests.exceptions.JSONDecodeError:
+            error_message = response.text
+        return {
+            "success": False,
+            "message": error_message
+        }
 
 # from flask import request, jsonify
 # from app.models.models import Note, SharedUrl
