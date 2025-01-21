@@ -160,6 +160,34 @@ def get_user_notes(auth_token):
             "success": False,
             "error": str(e)
         }
+    
+def delete_note(auth_token, note_id):
+    headers = {
+        "Authorization": f"Bearer {auth_token}"
+    }
+    try:
+        response = requests.delete(
+            f"{BASE_URL}/notes/{note_id}",
+            headers=headers
+        )
+        
+        if response.status_code == 200:
+            return {
+                "success": True,
+                "message": "Note deleted successfully"
+            }
+        else:
+            return {
+                "success": False,
+                "error": response.json().get("error", "Delete failed")
+            }
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e)
+        }
+
+
 # from flask import request, jsonify
 # from app.models.models import Note, SharedUrl
 # from app.utils.decorators import token_required
