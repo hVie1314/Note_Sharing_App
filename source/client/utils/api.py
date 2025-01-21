@@ -65,24 +65,34 @@ def logout(auth_token):
         
 
 def upload_file(auth_token, username, file_path):
-    headers = {"Authorization": f"Bearer {auth_token}"}
-    files = {'file': open(file_path, 'rb')}
-    data = {'username': username}
-    response = requests.post(f"{BASE_URL}/upload", headers=headers, files=files, data=data)
-    if response.status_code == 201:
-        return {
-            "success": True,
-            "message": "File uploaded successfully",
-            "file_path": response.json().get("file_path")
-        }
-    else:
-        try:
-            error_message = response.json().get('error')
-        except requests.exceptions.JSONDecodeError:
-            error_message = response.text
+    try:
+        with open(file_path, 'rb') as f:
+            files = {'file': f}
+            headers = {"Authorization": f"Bearer {auth_token}"}
+            data = {'username': username}
+            
+            response = requests.post(
+                f"{BASE_URL}/upload",
+                headers=headers,
+                files=files,
+                data=data
+            )
+            
+            if response.status_code == 201:
+                return {
+                    "success": True,
+                    "message": "File uploaded successfully",
+                    "file_path": response.json().get("file_path")
+                }
+            else:
+                return {
+                    "success": False,
+                    "error": response.json().get("error", "Upload failed")
+                }
+    except Exception as e:
         return {
             "success": False,
-            "message": error_message
+            "error": str(e)
         }
     
 # Hàm tạo ghi chú (mã hóa ghi chú trước khi gửi lên server)
@@ -127,6 +137,29 @@ def get_users(auth_token):
             "message": error_message
         }
 
+def get_user_notes(auth_token):
+    headers = {
+        "Authorization": f"Bearer {auth_token}"
+    }
+    try:
+        response = requests.get(
+            f"{BASE_URL}/notes",
+            headers=headers
+        )
+        
+        if response.status_code == 200:
+            return response.json()
+        else:
+            return {
+                "success": False,
+                "error": response.json().get("error", "Unknown error")
+            }
+            
+    except requests.exceptions.RequestException as e:
+        return {
+            "success": False,
+            "error": str(e)
+        }
 # from flask import request, jsonify
 # from app.models.models import Note, SharedUrl
 # from app.utils.decorators import token_required

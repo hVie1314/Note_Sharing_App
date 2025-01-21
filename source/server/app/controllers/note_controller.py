@@ -1,33 +1,25 @@
-from flask import Blueprint, request, jsonify
-from app.models.models import Note, SharedUrl
-from app.utils.decorators import token_required 
+from flask import jsonify, request
+from werkzeug.utils import secure_filename  # Thêm import này
+from config import Config
+from app.models.models import Note, SharedUrl, User
 from app.utils.encryption import encrypt_note, decrypt_note
 from app import db
 from datetime import datetime
+import os
 
-notes = Blueprint('notes', __name__)
-
-# Route tạo ghi chú mới, mã hóa nội dung ghi chú trước khi lưu
-@notes.route('/notes/create', methods=['POST'])
-@token_required
-def create_note():
+def create_note(data):
     try:
-        # Lấy thông tin từ yêu cầu
-        data = request.json
         note_content = data['content']
-        password = data['password']  # Mật khẩu để mã hóa ghi chú
+        password = data['password']
         expires_at = data.get('expires_at', None)
 
-        # Mã hóa ghi chú trước khi lưu
         encrypted_note = encrypt_note(note_content, password)
-
-        # Lưu ghi chú đã mã hóa vào cơ sở dữ liệu
         new_note = Note(
-            content=encrypted_note['content'],  # Ghi chú đã mã hóa
-            encryption_key=password,  # Lưu mật khẩu mã hóa
+            content=encrypted_note['content'],
+            encryption_key=password,
             expires_at=expires_at,
             username=request.form.get('username'),
-            iv=encrypted_note['iv']  # Lưu IV để giải mã
+            iv=encrypted_note['iv']
         )
         db.session.add(new_note)
         db.session.commit()
@@ -36,49 +28,53 @@ def create_note():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-# Route upload file, mã hóa nội dung file trước khi lưu
-@notes.route('/notes/upload', methods=['POST'])
-@token_required
-def upload_file():    # Đổi tên hàm từ create_note() thành upload_file()
+def upload_file(data):
     try:
-        # Lấy thông tin từ yêu cầu
-        data = request.json
-        note_content = data['content']
-        password = data['password']  # Mật khẩu để mã hóa ghi chú
-        expires_at = data.get('expires_at', None)
-
-        # Mã hóa ghi chú trước khi lưu
-        encrypted_note = encrypt_note(note_content, password)
-
-        # Lưu ghi chú đã mã hóa vào cơ sở dữ liệu
+        if 'file' not in request.files:
+            return jsonify({"error": "No file part"}), 400
+            
+        file = request.files['file']
+        if file.filename == '':
+            return jsonify({"error": "No selected file"}), 400
+            
+        filename = secure_filename(file.filename)
+        file_path = os.path.join(Config.UPLOAD_FOLDER, filename)
+        
+        # Tạo thư mục nếu chưa tồn tại
+        os.makedirs(Config.UPLOAD_FOLDER, exist_ok=True)
+        
+        # Lưu file
+        file.save(file_path)
+        
+        # Lưu vào database
         new_note = Note(
-            content=encrypted_note['ciphertext'],  # Ghi chú đã mã hóa
-            encryption_key=password,  # Lưu mật khẩu mã hóa
-            expires_at=expires_at,
-            username=request.form.get('username'),
-            iv=encrypted_note['iv']  # Lưu IV để giải mã
+            filename=filename,
+            file_path=file_path,
+            encryption_key="default_key",  # Có thể thêm key từ request
+            username=request.form.get('username')
         )
+        
         db.session.add(new_note)
         db.session.commit()
-
-        return jsonify({"message": "Note created successfully"}), 201
+        
+        return jsonify({
+            "message": "File uploaded successfully",
+            "file_path": file_path
+        }), 201
+        
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-# Route truy xuất ghi chú, giải mã nếu mật khẩu đúng
-@notes.route('/notes/<int:note_id>', methods=['GET'])
-@token_required
 def fetch_note(note_id):
     try:
         note = Note.query.get(note_id)
         if not note:
             return jsonify({"error": "Note not found"}), 404
 
-        password = request.args.get('password')  # Mật khẩu dùng để giải mã
+        password = request.args.get('password')
         if not password:
             return jsonify({"error": "Password is required"}), 400
 
-        # Giải mã ghi chú nếu có mật khẩu
         encrypted_note = {
             "ciphertext": note.content,
             "iv": note.iv
@@ -89,12 +85,8 @@ def fetch_note(note_id):
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-# Route để chia sẻ ghi chú
-@notes.route('/notes/share', methods=['POST'])
-@token_required
-def share_note():
+def share_note(data):
     try:
-        data = request.json
         note_id = data['note_id']
         username = data['username']
 
@@ -102,11 +94,9 @@ def share_note():
         if not note:
             return jsonify({"error": "Note not found"}), 404
 
-        # Kiểm tra nếu ghi chú có hết hạn hay không
         if note.expires_at and datetime.utcnow() > note.expires_at:
             return jsonify({"error": "Note has expired"}), 400
 
-        # Lưu thông tin chia sẻ
         shared_url = SharedUrl(note_id=note_id, username=username, shared_at=datetime.utcnow())
         db.session.add(shared_url)
         db.session.commit()
@@ -115,9 +105,6 @@ def share_note():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-# Route để truy cập ghi chú chia sẻ
-@notes.route('/notes/access', methods=['GET'])
-@token_required
 def access_shared_note():
     try:
         temp_url = request.args.get('temp_url')
@@ -125,14 +112,40 @@ def access_shared_note():
         if not shared_note:
             return jsonify({"error": "Shared note not found"}), 404
 
-        # Lấy ghi chú đã chia sẻ
         note = Note.query.get(shared_note.note_id)
         if not note:
             return jsonify({"error": "Note not found"}), 404
 
-        # Giải mã ghi chú
         decrypted_note = decrypt_note(note.content, shared_note.password, note.iv)
 
         return jsonify({"note": decrypted_note}), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+
+def fetch_user_notes():
+    try:
+        token = request.headers.get('Authorization').split(" ")[1]
+        user = User.query.filter_by(token=token).first()
+        
+        if not user:
+            return jsonify({"error": "User not found"}), 404
+            
+        # Lấy danh sách files đã upload của user
+        notes = Note.query.filter_by(username=user.username).all()
+        
+        notes_list = [{
+            'id': note.id,
+            'filename': note.filename
+        } for note in notes]
+        
+        return jsonify({
+            "success": True,
+            "notes": notes_list  # Danh sách files đã upload
+        }), 200
+        
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
