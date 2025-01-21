@@ -44,3 +44,17 @@ def logout_user(token):
     except Exception as e:
         db.session.rollback()
         return jsonify({"error": "Failed to log out", "details": str(e)}), 500
+    
+def get_all_users():
+    try:
+        users = User.query.all()
+        users_list = [
+            {
+                'id': user.id,
+                'username': user.username
+            } for user in users
+        ]
+        return jsonify({'users': users_list}), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+    

@@ -1,66 +1,190 @@
-from flask import request, jsonify
-from app.models.models import Note, SharedUrl
-from app.utils.decorators import token_required
-from app import db
-import os
-from datetime import datetime, timedelta
-from werkzeug.utils import secure_filename
+from flask import jsonify, request
+from werkzeug.utils import secure_filename  # Thêm import này
 from config import Config
+from app.models.models import Note, SharedUrl, User
+from app.utils.encryption import encrypt_note, decrypt_note
+from app import db
+from datetime import datetime
+import os
 
+def create_note(data):
+    try:
+        note_content = data['content']
+        password = data['password']
+        expires_at = data.get('expires_at', None)
 
-def upload_file():
-    if 'file' not in request.files:
-        return jsonify({"error": "No file part"}), 400
-    file = request.files['file']
-    if file.filename == '':
-        return jsonify({"error": "No selected file"}), 400
-    if file:
-        try:
-            filename = secure_filename(file.filename)
-            file_path = os.path.join(Config.UPLOAD_FOLDER, filename)
+        encrypted_note = encrypt_note(note_content, password)
+        new_note = Note(
+            content=encrypted_note['content'],
+            encryption_key=password,
+            expires_at=expires_at,
+            username=request.form.get('username'),
+            iv=encrypted_note['iv']
+        )
+        db.session.add(new_note)
+        db.session.commit()
 
-            # Check if file already exists and rename if necessary
-            base, extension = os.path.splitext(filename)
-            counter = 1
-            while os.path.exists(file_path):
-                filename = f"{base}({counter}){extension}"
-                file_path = os.path.join(Config.UPLOAD_FOLDER, filename)
-                counter += 1
+        return jsonify({"message": "Note created successfully"}), 201
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+def upload_file(data):
+    try:
+        if 'file' not in request.files:
+            return jsonify({"error": "No file part"}), 400
             
-            # os.makedirs(Config.UPLOAD_FOLDER, exist_ok=True)
-            file.save(file_path)
+        file = request.files['file']
+        if file.filename == '':
+            return jsonify({"error": "No selected file"}), 400
             
-            # Save file path to database
-            new_note = Note(
-                filename=filename,
-                encryption_key="tmp_key",  # Thay thế bằng khóa mã hóa thực tế nếu có
-                expires_at=None,
-                username = request.form.get('username'),
-                file_path=file_path
-            )
-            db.session.add(new_note)
-            db.session.commit()
-            
-            return jsonify({"message": "File uploaded successfully", "file_path": file_path}), 201
+        filename = secure_filename(file.filename)
+        file_path = os.path.join(Config.UPLOAD_FOLDER, filename)
         
-        except Exception as e:
-            return jsonify({"error": str(e)}), 500
+        # Tạo thư mục nếu chưa tồn tại
+        os.makedirs(Config.UPLOAD_FOLDER, exist_ok=True)
+        
+        # Lưu file
+        file.save(file_path)
+        
+        # Lưu vào database
+        new_note = Note(
+            filename=filename,
+            file_path=file_path,
+            encryption_key="default_key",  # Có thể thêm key từ request
+            username=request.form.get('username')
+        )
+        
+        db.session.add(new_note)
+        db.session.commit()
+        
+        return jsonify({
+            "message": "File uploaded successfully",
+            "file_path": file_path
+        }), 201
+        
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
-# @notes.route('/notes', methods=['POST'])
-# @token_required
-# def upload_note():
-#     data = request.json
-#     #filename = f"{uuid.uuid4()}.txt"
-#     # ...existing note upload code...
+def fetch_note(note_id):
+    try:
+        note = Note.query.get(note_id)
+        if not note:
+            return jsonify({"error": "Note not found"}), 404
 
-# @notes.route('/notes/share', methods=['POST'])
-# @token_required
-# def share_note():
-#     data = request.json
-#     # ...existing share code...
+        password = request.args.get('password')
+        if not password:
+            return jsonify({"error": "Password is required"}), 400
 
-# @notes.route('/notes/access', methods=['GET'])
-# @token_required
-# def access_note():
-#     temp_url = request.args.get('temp_url')
-#     # ...existing access code...
+        encrypted_note = {
+            "ciphertext": note.content,
+            "iv": note.iv
+        }
+        decrypted_note = decrypt_note(encrypted_note, password)
+
+        return jsonify({"note": decrypted_note}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+def share_note(data):
+    try:
+        note_id = data['note_id']
+        username = data['username']
+
+        note = Note.query.get(note_id)
+        if not note:
+            return jsonify({"error": "Note not found"}), 404
+
+        if note.expires_at and datetime.utcnow() > note.expires_at:
+            return jsonify({"error": "Note has expired"}), 400
+
+        shared_url = SharedUrl(note_id=note_id, username=username, shared_at=datetime.utcnow())
+        db.session.add(shared_url)
+        db.session.commit()
+
+        return jsonify({"message": "Note shared successfully"}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+def access_shared_note():
+    try:
+        temp_url = request.args.get('temp_url')
+        shared_note = SharedUrl.query.filter_by(temp_url=temp_url).first()
+        if not shared_note:
+            return jsonify({"error": "Shared note not found"}), 404
+
+        note = Note.query.get(shared_note.note_id)
+        if not note:
+            return jsonify({"error": "Note not found"}), 404
+
+        decrypted_note = decrypt_note(note.content, shared_note.password, note.iv)
+
+        return jsonify({"note": decrypted_note}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+def fetch_user_notes():
+    try:
+        token = request.headers.get('Authorization').split(" ")[1]
+        user = User.query.filter_by(token=token).first()
+        
+        if not user:
+            return jsonify({"error": "User not found"}), 404
+            
+        # Lấy danh sách files đã upload của user
+        notes = Note.query.filter_by(username=user.username).all()
+        
+        notes_list = [{
+            'id': note.id,
+            'filename': note.filename
+        } for note in notes]
+        
+        return jsonify({
+            "success": True,
+            "notes": notes_list  # Danh sách files đã upload
+        }), 200
+        
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+    
+def delete_note(note_id):
+    try:
+        # Lấy token từ header
+        token = request.headers.get('Authorization').split(" ")[1]
+        user = User.query.filter_by(token=token).first()
+        
+        if not user:
+            return jsonify({"error": "User not found"}), 404
+            
+        # Tìm note cần xóa
+        note = Note.query.get(note_id)
+        
+        if not note:
+            return jsonify({"error": "Note not found"}), 404
+            
+        # Kiểm tra quyền sở hữu
+        if note.username != user.username:
+            return jsonify({"error": "Unauthorized"}), 403
+            
+        # Xóa file vật lý
+        if os.path.exists(note.file_path):
+            os.remove(note.file_path)
+            
+        # Xóa record trong database
+        db.session.delete(note)
+        db.session.commit()
+        
+        return jsonify({
+            "success": True,
+            "message": "Note deleted successfully"
+        }), 200
+        
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500

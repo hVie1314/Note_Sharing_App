@@ -32,6 +32,7 @@ class App:
 
         self.current_frame = None
         self.token = None
+        self.username = None
         self.show_login_page()
 
     def set_window_position(self, width, height):
@@ -170,6 +171,7 @@ class App:
             response = login(username, password)
             if response.get("success"):
                 self.token = response.get("token")
+                self.username = username
                 self.show_dashboard()
             else:
                 messagebox.showerror("Error", response.get("message", "Login failed"))
