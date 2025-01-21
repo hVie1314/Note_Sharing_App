@@ -149,3 +149,42 @@ def fetch_user_notes():
             "success": False,
             "error": str(e)
         }), 500
+    
+def delete_note(note_id):
+    try:
+        # Lấy token từ header
+        token = request.headers.get('Authorization').split(" ")[1]
+        user = User.query.filter_by(token=token).first()
+        
+        if not user:
+            return jsonify({"error": "User not found"}), 404
+            
+        # Tìm note cần xóa
+        note = Note.query.get(note_id)
+        
+        if not note:
+            return jsonify({"error": "Note not found"}), 404
+            
+        # Kiểm tra quyền sở hữu
+        if note.username != user.username:
+            return jsonify({"error": "Unauthorized"}), 403
+            
+        # Xóa file vật lý
+        if os.path.exists(note.file_path):
+            os.remove(note.file_path)
+            
+        # Xóa record trong database
+        db.session.delete(note)
+        db.session.commit()
+        
+        return jsonify({
+            "success": True,
+            "message": "Note deleted successfully"
+        }), 200
+        
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500

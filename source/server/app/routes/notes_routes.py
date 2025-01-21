@@ -1,5 +1,5 @@
 from flask import Blueprint, request
-from app.controllers.note_controller import create_note, fetch_note, share_note, access_shared_note, fetch_user_notes
+from app.controllers.note_controller import create_note, fetch_note, share_note, access_shared_note, fetch_user_notes, delete_note
 from app.utils.decorators import token_required
 
 note_bp = Blueprint('note', __name__)
@@ -30,3 +30,8 @@ def access_shared_note_route():
 @token_required
 def get_user_notes():
     return fetch_user_notes()
+
+@note_bp.route('/notes/<int:note_id>', methods=['DELETE'])
+@token_required
+def delete_note_route(note_id):
+    return delete_note(note_id)
