@@ -786,17 +786,93 @@ class App:
 
     def create_share_url(self, note):
         try:
-            response = create_share_url(self.token, note['id'])
+            # Tạo dialog chọn user
+            select_user_dialog = tk.Toplevel(self.root)
+            select_user_dialog.title("Select User")
+            select_user_dialog.geometry("400x300")
+            
+            # Label hướng dẫn
+            tk.Label(select_user_dialog,
+                text="Chọn user để chia sẻ:",
+                font=('Poppins', 10)).pack(pady=10)
+            
+            # Frame chứa danh sách users
+            users_frame = tk.Frame(select_user_dialog)
+            users_frame.pack(fill='both', expand=True, padx=10)
+            
+            # Lấy danh sách users
+            response = get_users(self.token)
+            selected_user = tk.StringVar()
+            
             if response.get("success"):
-                url = response.get("url")
-                # Copy URL vào clipboard
-                self.root.clipboard_clear()
-                self.root.clipboard_append(url)
-                messagebox.showinfo("Success", 
-                    "Share URL đã được tạo và copy vào clipboard!\nURL: " + url)
-            else:
-                messagebox.showerror("Error", 
-                    response.get("error", "Không thể tạo share URL"))
+                users = response.get("users", [])
+                for user in users:
+                    if user['username'] != self.username:  # Không hiển thị user hiện tại
+                        tk.Radiobutton(users_frame,
+                            text=user['username'],
+                            variable=selected_user,
+                            value=user['username'],
+                            font=('Poppins', 10)).pack(anchor='w', pady=5)
+            
+            def next_step():
+                user = selected_user.get()
+                if not user:
+                    messagebox.showwarning("Warning", "Vui lòng chọn user")
+                    return
+                    
+                # Đóng dialog chọn user
+                select_user_dialog.destroy()
+                
+                # Mở dialog nhập thời hạn
+                expiry_dialog = tk.Toplevel(self.root)
+                expiry_dialog.title("Set Expiry Date")
+                expiry_dialog.geometry("400x200")
+                
+                tk.Label(expiry_dialog,
+                    text=f"Nhập số ngày URL có hiệu lực cho user {user}:",
+                    font=('Poppins', 10)).pack(pady=10)
+                
+                days_entry = tk.Entry(expiry_dialog)
+                days_entry.pack(pady=10)
+                
+                def submit():
+                    try:
+                        days = int(days_entry.get())
+                        if days <= 0:
+                            messagebox.showerror("Error", "Số ngày phải lớn hơn 0")
+                            return
+                            
+                        response = create_share_url(self.token, note['id'], days)
+                        if response.get("success"):
+                            url = response.get("url")
+                            self.root.clipboard_clear()
+                            self.root.clipboard_append(url)
+                            messagebox.showinfo("Success", 
+                                f"Share URL đã được tạo và copy vào clipboard!\nURL có hiệu lực trong {days} ngày\nĐã chia sẻ cho user: {user}\nURL: {url}")
+                            expiry_dialog.destroy()
+                        else:
+                            messagebox.showerror("Error", 
+                                response.get("error", "Không thể tạo share URL"))
+                            expiry_dialog.destroy()
+                            
+                    except ValueError:
+                        messagebox.showerror("Error", "Vui lòng nhập số ngày hợp lệ")
+                
+                tk.Button(expiry_dialog,
+                    text="Tạo URL",
+                    command=submit,
+                    bg='#0d6efd',
+                    fg='white',
+                    font=('Poppins', 10)).pack(pady=10)
+                    
+            # Button next
+            tk.Button(select_user_dialog,
+                text="Tiếp tục",
+                command=next_step,
+                bg='#0d6efd',
+                fg='white',
+                font=('Poppins', 10)).pack(pady=20)
+                
         except Exception as e:
             messagebox.showerror("Error", str(e))
     

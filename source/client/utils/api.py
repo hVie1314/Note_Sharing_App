@@ -267,8 +267,8 @@ def download_note(auth_token, note_id, save_path, password):
     except Exception as e:
         return {"success": False, "error": str(e)}
     
-def create_share_url(auth_token, note_id):
-    """Tạo URL chia sẻ cho note"""
+def create_share_url(auth_token, note_id, days):
+    """Tạo URL chia sẻ cho note với thời hạn"""
     headers = {
         "Authorization": f"Bearer {auth_token}"
     }
@@ -276,7 +276,10 @@ def create_share_url(auth_token, note_id):
         response = requests.post(
             f"{BASE_URL}/notes/share",
             headers=headers,
-            json={"note_id": note_id}
+            json={
+                "note_id": note_id,
+                "expires_days": days  # Thêm số ngày hết hạn
+            }
         )
         
         if response.status_code == 200:
@@ -291,6 +294,6 @@ def create_share_url(auth_token, note_id):
             }
     except Exception as e:
         return {
-            "success": False,
+            "success": False, 
             "error": str(e)
         }

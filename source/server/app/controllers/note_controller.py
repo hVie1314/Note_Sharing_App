@@ -3,7 +3,7 @@ from werkzeug.utils import secure_filename  # Thêm import này
 from config import Config
 from app.models.models import Note, SharedUrl, User
 from app import db
-from datetime import datetime
+from datetime import datetime, timedelta
 import os
 
 def create_note(data):
@@ -80,22 +80,41 @@ def fetch_note(note_id):
 
 def share_note(data):
     try:
-        note_id = data['note_id']
-        username = data['username']
+        note_id = data.get('note_id')
+        expires_days = int(data.get('expires_days', 7))  # Default 7 days
+        
+        # Get current user
+        token = request.headers.get('Authorization').split(" ")[1]
+        current_user = User.query.filter_by(token=token).first()
+        if not current_user:
+            return jsonify({"error": "User not found"}), 404
 
+        # Get note
         note = Note.query.get(note_id)
         if not note:
             return jsonify({"error": "Note not found"}), 404
 
-        if note.expires_at and datetime.utcnow() > note.expires_at:
-            return jsonify({"error": "Note has expired"}), 400
+        # Calculate expiry date
+        expires_at = datetime.utcnow() + timedelta(days=expires_days)
 
-        shared_url = SharedUrl(note_id=note_id, username=username, shared_at=datetime.utcnow())
+        # Create share URL
+        shared_url = SharedUrl(
+            note_id=note_id,
+            username=current_user.username,
+            expires_at=expires_at
+        )
         db.session.add(shared_url)
         db.session.commit()
 
-        return jsonify({"message": "Note shared successfully"}), 200
+        return jsonify({
+            "success": True,
+            "message": "Note shared successfully",
+            "share_url": f"/notes/share/{shared_url.url}"
+        }), 200
+        
     except Exception as e:
+        print(f"Share note error: {str(e)}")  # Debug log
+        db.session.rollback()
         return jsonify({"error": str(e)}), 500
 
 def access_shared_note():
