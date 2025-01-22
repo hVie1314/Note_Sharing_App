@@ -217,14 +217,11 @@ def get_shared_urls_by_user(username):
         shared_urls = SharedUrl.query.filter_by(username=username).all()
         urls_list = []
         for shared_url in shared_urls:
-            note = Note.query.get(shared_url.note_id)
-            if note:
-                urls_list.append({
-                    'url': shared_url.url,
-                    'filename': note.filename,
-                    'expires_at': shared_url.expires_at.strftime("%Y-%m-%d %H:%M"),
-                    'shared_by': note.username
-                })
+            urls_list.append({
+                'url': shared_url.url,
+                'expires_at': shared_url.expires_at.strftime("%Y-%m-%d %H:%M"),
+                'shared_by': shared_url.note.username
+            })
         return jsonify({
             "success": True,
             "shared_urls": urls_list

@@ -675,11 +675,11 @@ class App:
                         url_frame = tk.Frame(self.shared_urls_frame, bg='white')
                         url_frame.pack(fill='x', pady=5, padx=10)
                         
-                        # File name
+                        # URL
                         tk.Label(url_frame,
-                            text=url['filename'],
-                            font=('Poppins', 11),
-                            bg='white').pack(anchor='w')
+                        text=f"URL: {url['url']}",
+                        font=('Poppins', 11),
+                        bg='white').pack(anchor='w')
                             
                         # Expires at
                         tk.Label(url_frame,
