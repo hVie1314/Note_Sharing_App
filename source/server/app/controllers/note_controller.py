@@ -210,3 +210,24 @@ def delete_note(note_id):
             "success": False,
             "error": str(e)
         }), 500
+    
+def get_shared_urls_by_user(username):
+    """Lấy danh sách URLs được chia sẻ cho user"""
+    try:
+        shared_urls = SharedUrl.query.filter_by(username=username).all()
+        urls_list = []
+        for shared_url in shared_urls:
+            note = Note.query.get(shared_url.note_id)
+            if note:
+                urls_list.append({
+                    'url': shared_url.url,
+                    'filename': note.filename,
+                    'expires_at': shared_url.expires_at.strftime("%Y-%m-%d %H:%M"),
+                    'shared_by': note.username
+                })
+        return jsonify({
+            "success": True,
+            "shared_urls": urls_list
+        }), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500

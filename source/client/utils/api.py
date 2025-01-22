@@ -297,3 +297,30 @@ def create_share_url(auth_token, note_id, days):
             "success": False, 
             "error": str(e)
         }
+    
+def get_shared_urls(auth_token, username):
+    """Lấy danh sách URLs được chia sẻ cho user"""
+    headers = {
+        "Authorization": f"Bearer {auth_token}"
+    }
+    try:
+        response = requests.get(
+            f"{BASE_URL}/notes/shared/{username}",
+            headers=headers
+        )
+        
+        if response.status_code == 200:
+            return {
+                "success": True,
+                "shared_urls": response.json().get("shared_urls", [])
+            }
+        else:
+            return {
+                "success": False,
+                "error": response.json().get("error", "Failed to get shared URLs")
+            }
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e)
+        }

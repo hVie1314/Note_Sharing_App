@@ -1,6 +1,6 @@
 import tkinter as tk
 from tkinter import ttk, messagebox, font, filedialog
-from utils.api import register, login, logout, upload_file, get_users, get_user_notes, delete_note, download_note, create_share_url
+from utils.api import register, login, logout, upload_file, get_users, get_user_notes, delete_note, download_note, create_share_url, get_shared_urls
 from PIL import Image, ImageTk
 import os
 
@@ -565,55 +565,28 @@ class App:
         # Header
         header = tk.Frame(frame, bg='white', height=60)
         header.pack(fill='x')
-        header.pack_propagate(False)
         
-        # Label cho tên user
-        self.chat_user_label = tk.Label(
-            header,
-            text="Select a user to chat",
+        self.chat_user_label = tk.Label(header,
+            text="Select a user to view shared URLs",
             font=('Poppins', 14, 'bold'),
-            bg='white'
-        )
-        self.chat_user_label.pack(side='left', padx=20, pady=15)
+            bg='white')
+        self.chat_user_label.pack(pady=10)
         
-        # Divider line dưới header
-        separator = ttk.Separator(frame, orient='horizontal')
-        separator.pack(fill='x')
+        # URLs area with scroll
+        urls_canvas = tk.Canvas(frame, bg='white')
+        urls_scrollbar = ttk.Scrollbar(frame, orient="vertical", command=urls_canvas.yview)
+        self.shared_urls_frame = tk.Frame(urls_canvas, bg='white')
         
-        # Messages area with scroll
-        messages_canvas = tk.Canvas(frame, bg='white')
-        messages_scrollbar = ttk.Scrollbar(frame, orient="vertical", command=messages_canvas.yview)
-        self.messages_frame = tk.Frame(messages_canvas, bg='white')
-
-        self.messages_frame.bind(
+        self.shared_urls_frame.bind(
             "<Configure>",
-            lambda e: messages_canvas.configure(scrollregion=messages_canvas.bbox("all"))
+            lambda e: urls_canvas.configure(scrollregion=urls_canvas.bbox("all"))
         )
-
-        messages_canvas.create_window((0, 0), window=self.messages_frame, anchor="nw", width=messages_canvas.winfo_reqwidth())
-        messages_canvas.configure(yscrollcommand=messages_scrollbar.set)
-
-        # Input area
-        input_frame = tk.Frame(frame, bg='white', height=60)
-        input_frame.pack(side='bottom', fill='x', padx=10, pady=10)
-        input_frame.pack_propagate(False)
-
-        self.message_entry = tk.Entry(input_frame, 
-            font=('Poppins', 12),
-            bg='#f0f2f5')
-        self.message_entry.pack(side='left', fill='both', expand=True, padx=(0, 10), pady=10)
-
-        send_btn = tk.Button(input_frame,
-            text="Send",
-            bg='#103cbe',
-            fg='white',
-            font=('Poppins', 10),
-            command=self.send_message)
-        send_btn.pack(side='right', pady=10)
-
-        # Pack messages area
-        messages_canvas.pack(side="left", fill="both", expand=True)
-        messages_scrollbar.pack(side="right", fill="y")
+        
+        urls_canvas.create_window((0, 0), window=self.shared_urls_frame, anchor="nw")
+        urls_canvas.configure(yscrollcommand=urls_scrollbar.set)
+        
+        urls_canvas.pack(side="left", fill="both", expand=True)
+        urls_scrollbar.pack(side="right", fill="y")
 
     def setup_notes_list(self, frame):
         # Header
@@ -683,32 +656,51 @@ class App:
 
     def select_user(self, username):
         try:
-            # Cập nhật user được chọn
             self.selected_user = username
-            
-            # Cập nhật header của khung chat
             self.chat_user_label.configure(
-                text=username,
+                text=f"Shared URLs from {username}",
                 bg='#f8f9fa'
             )
             
-            # Xóa tin nhắn cũ
-            for widget in self.messages_frame.winfo_children():
+            # Xóa URLs cũ
+            for widget in self.shared_urls_frame.winfo_children():
                 widget.destroy()
                 
-            # TODO: Load tin nhắn cũ
-            # response = get_chat_messages(self.token, username)
-            # if response.get("success"):
-            #     messages = response.get("messages", [])
-            #     for msg in messages:
-            #         self.add_message_to_chat(msg["sender"], msg["content"])
-                    
-            # Hiện khung nhập tin nhắn
-            self.message_entry.delete(0, tk.END)
-            self.message_entry.focus()
-            
+            # Load shared URLs
+            response = get_shared_urls(self.token, username)
+            if response.get("success"):
+                urls = response.get("shared_urls", [])
+                if urls:
+                    for url in urls:
+                        url_frame = tk.Frame(self.shared_urls_frame, bg='white')
+                        url_frame.pack(fill='x', pady=5, padx=10)
+                        
+                        # File name
+                        tk.Label(url_frame,
+                            text=url['filename'],
+                            font=('Poppins', 11),
+                            bg='white').pack(anchor='w')
+                            
+                        # Expires at
+                        tk.Label(url_frame,
+                            text=f"Expires: {url['expires_at']}",
+                            font=('Poppins', 9),
+                            fg='gray').pack(anchor='w')
+                        
+                        # Access button
+                        tk.Button(url_frame,
+                            text="Access",
+                            font=('Poppins', 10),
+                            bg='#28a745',
+                            fg='white',
+                            command=lambda u=url: self.access_shared_note(u)).pack(anchor='e')
+                else:
+                    tk.Label(self.shared_urls_frame,
+                        text="No shared URLs",
+                        font=('Poppins', 11),
+                        bg='white').pack(pady=20)
         except Exception as e:
-            print(f"Error selecting user: {str(e)}")
+            print(f"Error loading shared URLs: {str(e)}")
 
     def handle_delete_note(self, note_id):
         if messagebox.askyesno("Confirm Delete", "Are you sure you want to delete this note?"):
