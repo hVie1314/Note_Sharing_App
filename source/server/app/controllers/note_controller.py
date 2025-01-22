@@ -2,24 +2,19 @@ from flask import jsonify, request
 from werkzeug.utils import secure_filename  # Thêm import này
 from config import Config
 from app.models.models import Note, SharedUrl, User
-from app.utils.encryption import encrypt_note, decrypt_note
 from app import db
 from datetime import datetime
 import os
 
 def create_note(data):
     try:
-        note_content = data['content']
-        password = data['password']
-        expires_at = data.get('expires_at', None)
-
-        encrypted_note = encrypt_note(note_content, password)
+        filename = secure_filename(data['filename'])
+        file_path = os.path.join('./app/uploads', filename)
+        
         new_note = Note(
-            content=encrypted_note['content'],
-            encryption_key=password,
-            expires_at=expires_at,
-            username=request.form.get('username'),
-            iv=encrypted_note['iv']
+            filename=filename,
+            file_path=file_path,
+            username=request.form.get('username')
         )
         db.session.add(new_note)
         db.session.commit()
@@ -71,17 +66,15 @@ def fetch_note(note_id):
         if not note:
             return jsonify({"error": "Note not found"}), 404
 
-        password = request.args.get('password')
-        if not password:
-            return jsonify({"error": "Password is required"}), 400
+        # Đọc nội dung file từ đường dẫn
+        with open(note.file_path, 'rb') as f:
+            file_content = f.read()
 
-        encrypted_note = {
-            "ciphertext": note.content,
-            "iv": note.iv
-        }
-        decrypted_note = decrypt_note(encrypted_note, password)
-
-        return jsonify({"note": decrypted_note}), 200
+        return jsonify({
+            "filename": note.filename,
+            "content": file_content
+        }), 200
+        
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -107,18 +100,28 @@ def share_note(data):
 
 def access_shared_note():
     try:
+        # Kiểm tra URL chia sẻ
         temp_url = request.args.get('temp_url')
         shared_note = SharedUrl.query.filter_by(temp_url=temp_url).first()
         if not shared_note:
             return jsonify({"error": "Shared note not found"}), 404
 
+        # Lấy note từ database
         note = Note.query.get(shared_note.note_id)
         if not note:
             return jsonify({"error": "Note not found"}), 404
 
-        decrypted_note = decrypt_note(note.content, shared_note.password, note.iv)
+        # Đọc nội dung file đã mã hóa
+        with open(note.file_path, 'rb') as f:
+            file_content = f.read()
 
-        return jsonify({"note": decrypted_note}), 200
+        # Trả về thông tin note và nội dung đã mã hóa
+        return jsonify({
+            "filename": note.filename,
+            "content": file_content,
+            "password": shared_note.password  # Password để client giải mã
+        }), 200
+        
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 

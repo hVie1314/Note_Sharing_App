@@ -1,6 +1,6 @@
 import tkinter as tk
 from tkinter import ttk, messagebox, font, filedialog
-from utils.api import register, login, logout, upload_file, get_users, get_user_notes, delete_note, download_note
+from utils.api import register, login, logout, upload_file, get_users, get_user_notes, delete_note, download_note, create_share_url
 from PIL import Image, ImageTk
 import os
 
@@ -173,6 +173,7 @@ class App:
                 self.token = response.get("token")
                 self.username = username
                 self.show_dashboard()
+                self.load_notes()
             else:
                 messagebox.showerror("Error", response.get("message", "Login failed"))
 
@@ -360,13 +361,51 @@ class App:
         login_link.bind("<Button-1>", lambda e: self.show_login_page())
 
     def handle_upload(self):
+        try:
             file_path = filedialog.askopenfilename()
             if file_path:
-                response = upload_file(self.token, self.username, file_path)
-                if response.get("success"):
-                    messagebox.showinfo("Success", response.get("message"))
-                else:
-                    messagebox.showerror("Error", response.get("message"))
+                # Tạo dialog để nhập password
+                password_dialog = tk.Toplevel(self.root)
+                password_dialog.title("Enter Password")
+                password_dialog.geometry("300x150")
+
+                # Password entry
+                tk.Label(password_dialog, 
+                    text="Enter password to encrypt file:",
+                    font=('Poppins', 10)).pack(pady=10)
+                    
+                password_entry = tk.Entry(password_dialog, show="*")
+                password_entry.pack(pady=10)
+                
+                def submit():
+                    password = password_entry.get()
+                    if password:
+                        # Upload với password
+                        print("Uploading with password...")
+                        response = upload_file(self.token, self.username, file_path, password)
+                        print(f"Upload response: {response}")
+                        
+                        # Check success flag trong response
+                        if response and (response.get("success") or "message" in response):
+                            messagebox.showinfo("Success", "File uploaded successfully")
+                            password_dialog.destroy()
+                            self.load_notes()  # Refresh notes list
+                        else:
+                            error_msg = response.get("error", "Upload failed")
+                            messagebox.showerror("Error", error_msg)
+                            password_dialog.destroy()
+                    
+                # Upload button
+                tk.Button(password_dialog,
+                    text="Upload",
+                    command=submit,
+                    bg='#103cbe',
+                    fg='white',
+                    font=('Poppins', 10)).pack(pady=10)
+                    
+        except Exception as e:
+            print(f"Upload error: {str(e)}")  # Debug log
+            messagebox.showerror("Error", f"Upload failed: {str(e)}")
         
     # Hàm gửi tin nhắn
     def send_message(self):
@@ -472,6 +511,7 @@ class App:
         self.setup_users_list(users_frame)
         self.setup_chat_area(chat_frame)
         self.setup_notes_list(notes_frame)
+        self.load_notes()
         
     def setup_users_list(self, frame):
         # Header
@@ -695,13 +735,11 @@ class App:
             messagebox.showerror("Error", f"Failed to download note: {str(e)}")
 
     def load_notes(self):
-        """Hàm cập nhật danh sách notes"""
         try:
             # Xóa notes cũ
             for widget in self.notes_frame.winfo_children():
                 widget.destroy()
                 
-            # Lấy danh sách notes mới
             response = get_user_notes(self.token)
             if response.get("success"):
                 notes = response.get("notes", [])
@@ -715,25 +753,52 @@ class App:
                         font=('Poppins', 11),
                         bg='white',
                         anchor='w').pack(side='left', fill='x', expand=True)
-                        
+                    
+                    buttons_frame = tk.Frame(note_frame, bg='white')
+                    buttons_frame.pack(side='right')
+                    
+                    # Share URL button 
+                    tk.Button(buttons_frame,
+                        text="🔗",
+                        font=('Poppins', 11),
+                        bg='#0d6efd',
+                        fg='white',
+                        command=lambda n=note: self.create_share_url(n)).pack(side='right', padx=2)
+                    
                     # Download button
-                    tk.Button(note_frame,
+                    tk.Button(buttons_frame,
                         text="↓",
                         font=('Poppins', 11),
                         bg='#28a745',
                         fg='white',
-                        command=lambda n=note: self.handle_download_note(n)).pack(side='right', padx=5)
-                        
+                        command=lambda n=note: self.handle_download_note(n)).pack(side='right', padx=2)
+                    
                     # Delete button
-                    tk.Button(note_frame,
+                    tk.Button(buttons_frame,
                         text="×",
                         font=('Poppins', 11),
                         bg='#dc3545',
                         fg='white',
-                        command=lambda id=note['id']: self.handle_delete_note(id)).pack(side='right')
-                    
+                        command=lambda id=note['id']: self.handle_delete_note(id)).pack(side='right', padx=2)
+                        
         except Exception as e:
             print(f"Error loading notes: {str(e)}")
+
+    def create_share_url(self, note):
+        try:
+            response = create_share_url(self.token, note['id'])
+            if response.get("success"):
+                url = response.get("url")
+                # Copy URL vào clipboard
+                self.root.clipboard_clear()
+                self.root.clipboard_append(url)
+                messagebox.showinfo("Success", 
+                    "Share URL đã được tạo và copy vào clipboard!\nURL: " + url)
+            else:
+                messagebox.showerror("Error", 
+                    response.get("error", "Không thể tạo share URL"))
+        except Exception as e:
+            messagebox.showerror("Error", str(e))
     
 if __name__ == "__main__":
     app = App()

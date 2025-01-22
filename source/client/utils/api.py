@@ -64,12 +64,33 @@ def logout(auth_token):
         }
         
 
-def upload_file(auth_token, username, file_path):
+def upload_file(auth_token, username, file_path, password):
+    headers = {
+        "Authorization": f"Bearer {auth_token}"
+    }
+    temp_path = None
     try:
+        print(f"Starting upload for file: {file_path}")
+        
+        # Đọc và mã hóa file
         with open(file_path, 'rb') as f:
-            files = {'file': f}
-            headers = {"Authorization": f"Bearer {auth_token}"}
-            data = {'username': username}
+            content = f.read()
+            encrypted_data = encrypt_note(content, password)
+        
+        # Tạo temporary file
+        temp_filename = f"encrypted_{os.path.basename(file_path)}"
+        temp_path = os.path.join(os.path.dirname(file_path), temp_filename)
+        
+        # Ghi file tạm và upload
+        with open(temp_path, 'wb') as temp_file:
+            temp_file.write(encrypted_data['ciphertext'])
+        
+        with open(temp_path, 'rb') as upload_file:
+            files = {'file': (os.path.basename(file_path), upload_file)}
+            data = {
+                'username': username,
+                'encryption_key': encrypted_data['key']
+            }
             
             response = requests.post(
                 f"{BASE_URL}/upload",
@@ -78,24 +99,33 @@ def upload_file(auth_token, username, file_path):
                 data=data
             )
             
-            if response.status_code == 201:
+            if response.status_code in [200, 201]:
+                response_data = response.json()
                 return {
                     "success": True,
-                    "message": "File uploaded successfully",
-                    "file_path": response.json().get("file_path")
+                    "message": response_data.get("message", "File uploaded successfully"),
+                    "file_path": response_data.get("file_path")
                 }
             else:
                 return {
                     "success": False,
                     "error": response.json().get("error", "Upload failed")
                 }
+            
     except Exception as e:
+        print(f"Upload error: {str(e)}")
         return {
             "success": False,
             "error": str(e)
         }
-    
-# Hàm tạo ghi chú (mã hóa ghi chú trước khi gửi lên server)
+    finally:
+        # Cleanup temp file
+        if temp_path and os.path.exists(temp_path):
+            try:
+                os.remove(temp_path)
+            except Exception as e:
+                print(f"Error removing temp file: {str(e)}")
+
 def create_note(auth_token, note_content, password, expires_at=None):
     encrypted_note = encrypt_note(note_content, password)  # Mã hóa ghi chú
     encrypted_note["expires_at"] = expires_at
@@ -187,105 +217,80 @@ def delete_note(auth_token, note_id):
             "error": str(e)
         }
 
-def download_note(auth_token, note_id, save_path):
-    headers = {
-        "Authorization": f"Bearer {auth_token}"
-    }
+def download_note(auth_token, note_id, save_path, password):
+    """
+    Download và giải mã file từ server.
+    
+    Args:
+        auth_token (str): Token xác thực
+        note_id (int): ID của note cần download
+        save_path (str): Đường dẫn lưu file
+        password (str): Mật khẩu để giải mã
+        
+    Returns:
+        dict: Kết quả download với status và message
+    """
     try:
-        # Gửi GET request để download note
+        headers = {"Authorization": f"Bearer {auth_token}"}
+        
+        # Download encrypted file
         response = requests.get(
             f"{BASE_URL}/notes/download/{note_id}",
-            headers=headers,
-            stream=True  # Stream response để xử lý file lớn
+            headers=headers
         )
         
         if response.status_code == 200:
-            # Lưu file được download về máy
-            with open(save_path, 'wb') as f:
-                for chunk in response.iter_content(chunk_size=8192):
-                    if chunk:
-                        f.write(chunk)
+            # Lấy dữ liệu đã mã hóa
+            encrypted_data = {
+                "content": response.json()['content'],
+                "iv": response.json()['iv']
+            }
             
+            # Giải mã
+            decrypted_content = decrypt_note(encrypted_data, password)
+            
+            # Lưu file
+            with open(save_path, 'wb') as f:
+                f.write(decrypted_content.encode('utf-8'))
+                
             return {
                 "success": True,
-                "message": "Note downloaded successfully",
+                "message": "File downloaded successfully",
                 "file_path": save_path
             }
         else:
             return {
                 "success": False,
-                "error": response.json().get("error", "Failed to download note")
+                "error": response.json().get("error", "Download failed")
             }
             
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+    
+def create_share_url(auth_token, note_id):
+    """Tạo URL chia sẻ cho note"""
+    headers = {
+        "Authorization": f"Bearer {auth_token}"
+    }
+    try:
+        response = requests.post(
+            f"{BASE_URL}/notes/share",
+            headers=headers,
+            json={"note_id": note_id}
+        )
+        
+        if response.status_code == 200:
+            return {
+                "success": True,
+                "url": response.json().get("share_url")
+            }
+        else:
+            return {
+                "success": False,
+                "error": response.json().get("error", "Failed to create share URL")
+            }
     except Exception as e:
         return {
             "success": False,
             "error": str(e)
         }
-
-# from flask import request, jsonify
-# from app.models.models import Note, SharedUrl
-# from app.utils.decorators import token_required
-# from app import db
-# import os
-# from datetime import datetime, timedelta
-# from werkzeug.utils import secure_filename
-# from config import Config
-
-
-# def upload_file():
-#     if 'file' not in request.files:
-#         return jsonify({"error": "No file part"}), 400
-#     file = request.files['file']
-#     if file.filename == '':
-#         return jsonify({"error": "No selected file"}), 400
-#     if file:
-#         try:
-#             filename = secure_filename(file.filename)
-#             file_path = os.path.join(Config.UPLOAD_FOLDER, filename)
-
-#             # Check if file already exists and rename if necessary
-#             base, extension = os.path.splitext(filename)
-#             counter = 1
-#             while os.path.exists(file_path):
-#                 filename = f"{base}({counter}){extension}"
-#                 file_path = os.path.join(Config.UPLOAD_FOLDER, filename)
-#                 counter += 1
-            
-#             # os.makedirs(Config.UPLOAD_FOLDER, exist_ok=True)
-#             file.save(file_path)
-            
-#             # Save file path to database
-#             new_note = Note(
-#                 filename=filename,
-#                 encryption_key="tmp_key",  # Thay thế bằng khóa mã hóa thực tế nếu có
-#                 expires_at=None,
-#                 username = request.form.get('username'),
-#                 file_path=file_path
-#             )
-#             db.session.add(new_note)
-#             db.session.commit()
-            
-#             return jsonify({"message": "File uploaded successfully", "file_path": file_path}), 201
-        
-#         except Exception as e:
-#             return jsonify({"error": str(e)}), 500
-
-# # @notes.route('/notes', methods=['POST'])
-# # @token_required
-# # def upload_note():
-# #     data = request.json
-# #     #filename = f"{uuid.uuid4()}.txt"
-# #     # ...existing note upload code...
-
-# # @notes.route('/notes/share', methods=['POST'])
-# # @token_required
-# # def share_note():
-# #     data = request.json
-# #     # ...existing share code...
-
-# # @notes.route('/notes/access', methods=['GET'])
-# # @token_required
-# # def access_note():
-# #     temp_url = request.args.get('temp_url')
-# #     # ...existing access code...

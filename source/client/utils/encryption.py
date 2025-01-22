@@ -4,24 +4,44 @@ from cryptography.hazmat.primitives import padding
 import os
 
 def generate_key(password: str) -> bytes:
+    """
+    Chuyển đổi password thành key 32 bytes cho AES-256
+    """
+    # Padding password để đủ 32 bytes
     return password.encode('utf-8').ljust(32, b'\0')[:32]
 
-def encrypt_note(note_content: str, password: str) -> dict:
-    key = generate_key(password)
-    iv = os.urandom(16)
-    
-    note_bytes = note_content.encode('utf-8')
-    padder = padding.PKCS7(128).padder()
-    padded_data = padder.update(note_bytes) + padder.finalize()
-
-    cipher = Cipher(algorithms.AES(key), modes.CBC(iv), backend=default_backend())
-    encryptor = cipher.encryptor()
-    ciphertext = encryptor.update(padded_data) + encryptor.finalize()
-
-    return {
-        "content": ciphertext,
-        "iv": iv
-    }
+def encrypt_note(content, password):
+    try:
+        # Generate key 32 bytes từ password
+        key = generate_key(password)
+        
+        # Generate IV
+        iv = os.urandom(16)
+        
+        # Tạo cipher
+        cipher = Cipher(
+            algorithms.AES(key),
+            modes.CBC(iv),  
+            backend=default_backend()
+        )
+        encryptor = cipher.encryptor()
+        
+        # Padding content
+        padder = padding.PKCS7(128).padder()
+        padded_data = padder.update(content) + padder.finalize()
+        
+        # Mã hóa
+        ciphertext = encryptor.update(padded_data) + encryptor.finalize()
+        
+        return {
+            'ciphertext': ciphertext,
+            'iv': iv,
+            'key': key  # Thêm key vào response
+        }
+        
+    except Exception as e:
+        print(f"Encryption error: {str(e)}")
+        raise
 
 def decrypt_note(encrypted_note: dict, password: str) -> str:
     key = generate_key(password)
