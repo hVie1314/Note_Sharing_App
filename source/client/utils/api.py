@@ -143,7 +143,7 @@ def get_user_notes(auth_token):
     }
     try:
         response = requests.get(
-            f"{BASE_URL}/notes",
+            f"{BASE_URL}/notes/list",
             headers=headers
         )
         
@@ -187,6 +187,41 @@ def delete_note(auth_token, note_id):
             "error": str(e)
         }
 
+def download_note(auth_token, note_id, save_path):
+    headers = {
+        "Authorization": f"Bearer {auth_token}"
+    }
+    try:
+        # Gửi GET request để download note
+        response = requests.get(
+            f"{BASE_URL}/notes/download/{note_id}",
+            headers=headers,
+            stream=True  # Stream response để xử lý file lớn
+        )
+        
+        if response.status_code == 200:
+            # Lưu file được download về máy
+            with open(save_path, 'wb') as f:
+                for chunk in response.iter_content(chunk_size=8192):
+                    if chunk:
+                        f.write(chunk)
+            
+            return {
+                "success": True,
+                "message": "Note downloaded successfully",
+                "file_path": save_path
+            }
+        else:
+            return {
+                "success": False,
+                "error": response.json().get("error", "Failed to download note")
+            }
+            
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e)
+        }
 
 # from flask import request, jsonify
 # from app.models.models import Note, SharedUrl

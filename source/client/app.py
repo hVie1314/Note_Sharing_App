@@ -1,6 +1,6 @@
 import tkinter as tk
 from tkinter import ttk, messagebox, font, filedialog
-from utils.api import register, login, logout, upload_file, get_users
+from utils.api import register, login, logout, upload_file, get_users, get_user_notes, delete_note, download_note
 from PIL import Image, ImageTk
 import os
 
@@ -482,26 +482,25 @@ class App:
         # Scrollable container
         canvas = tk.Canvas(frame, bg='white', highlightthickness=0)
         scrollbar = ttk.Scrollbar(frame, orient="vertical", command=canvas.yview)
-        scrollable_frame = tk.Frame(canvas, bg='white')
         users_list_frame = tk.Frame(canvas, bg='white')
 
+        # Configure scrolling
         users_list_frame.bind(
-        "<Configure>",
-        lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+            "<Configure>",
+            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
         )
         canvas.create_window((0, 0), window=users_list_frame, anchor="nw")
 
-        try:
-            response = get_users(self.token)
-            if response.get("success"):
-                users = response.get("users", [])
-                for user in users:
-                    if user['username'] != self.username:
-                        user_frame = tk.Frame(users_list_frame, bg='white', cursor='hand2')
-                        user_frame.pack(fill='x', pady=2)
-                    user_frame.bind('<Button-1>', lambda e, u=user['username']: self.select_user(u))
+        # Get và hiển thị users
+        response = get_users(self.token)
+        if response.get("success"):
+            users = response.get("users", [])
+            for user in users:
+                if user['username'] != self.username:
+                    user_frame = tk.Frame(users_list_frame, bg='white', cursor='hand2')
+                    user_frame.pack(fill='x', pady=2)
                     
-                    # User label with hover effect
+                    # User label với hover effect
                     user_label = tk.Label(
                         user_frame,
                         text=user['username'],
@@ -513,28 +512,25 @@ class App:
                     )
                     user_label.pack(fill='x')
                     
-                    # Hover effects
-                    user_frame.bind('<Enter>', lambda e, f=user_frame: f.configure(bg='#f0f2f5'))
-                    user_frame.bind('<Leave>', lambda e, f=user_frame: f.configure(bg='white'))
-                    user_label.bind('<Enter>', lambda e, l=user_label: l.configure(bg='#f0f2f5'))
-                    user_label.bind('<Leave>', lambda e, l=user_label: l.configure(bg='white'))
-                    
-        except Exception as e:
-            print(f"Error fetching users: {str(e)}")
-        # Pack layout
+                    # Bind click event
+                    user_frame.bind('<Button-1>', 
+                        lambda e, u=user['username']: self.select_user(u))
+                    user_label.bind('<Button-1>', 
+                        lambda e, u=user['username']: self.select_user(u))
+
         canvas.pack(side="left", fill="both", expand=True)
         scrollbar.pack(side="right", fill="y")
 
     def setup_chat_area(self, frame):
         # Header
-        header = tk.Frame(frame, bg='#f8f9fa', height=50)
+        header = tk.Frame(frame, bg='white', height=60)
         header.pack(fill='x')
         header.pack_propagate(False)
-    
-        # Label tên user trong header
+        
+        # Label cho tên user
         self.chat_user_label = tk.Label(
             header,
-            text="Select a user to chat",  # Text mặc định
+            text="Select a user to chat",
             font=('Poppins', 14, 'bold'),
             bg='white'
         )
@@ -608,17 +604,137 @@ class App:
             lambda e: notes_canvas.configure(scrollregion=notes_canvas.bbox("all"))
         )
 
-        notes_canvas.create_window((0, 0), window=self.notes_frame, anchor="nw", width=notes_canvas.winfo_reqwidth())
+        notes_canvas.create_window((0, 0), window=self.notes_frame, anchor="nw")
         notes_canvas.configure(yscrollcommand=notes_scrollbar.set)
 
-        # Pack notes list
+        # Load và hiển thị notes
+        response = get_user_notes(self.token)
+        if response.get("success"):
+            notes = response.get("notes", [])
+            for note in notes:
+                note_frame = tk.Frame(self.notes_frame, bg='white')
+                note_frame.pack(fill='x', pady=5, padx=10)
+                
+                # Note name
+                tk.Label(note_frame,
+                    text=note['filename'],
+                    font=('Poppins', 11),
+                    bg='white',
+                    anchor='w').pack(side='left', fill='x', expand=True)
+                    
+                # Download button
+                tk.Button(note_frame,
+                    text="↓",
+                    font=('Poppins', 11),
+                    bg='#28a745',
+                    fg='white',
+                    command=lambda n=note: self.handle_download_note(n)).pack(side='right', padx=5)
+                    
+                # Delete button
+                tk.Button(note_frame,
+                    text="×",
+                    font=('Poppins', 11),
+                    bg='#dc3545',
+                    fg='white',
+                    command=lambda id=note['id']: self.handle_delete_note(id)).pack(side='right')
+
         notes_canvas.pack(side="left", fill="both", expand=True)
         notes_scrollbar.pack(side="right", fill="y")
 
     def select_user(self, username):
-        self.selected_user = username
-        self.chat_user_label.configure(text=username)
-        # TODO: Load chat history
+        try:
+            # Cập nhật user được chọn
+            self.selected_user = username
+            
+            # Cập nhật header của khung chat
+            self.chat_user_label.configure(
+                text=username,
+                bg='#f8f9fa'
+            )
+            
+            # Xóa tin nhắn cũ
+            for widget in self.messages_frame.winfo_children():
+                widget.destroy()
+                
+            # TODO: Load tin nhắn cũ
+            # response = get_chat_messages(self.token, username)
+            # if response.get("success"):
+            #     messages = response.get("messages", [])
+            #     for msg in messages:
+            #         self.add_message_to_chat(msg["sender"], msg["content"])
+                    
+            # Hiện khung nhập tin nhắn
+            self.message_entry.delete(0, tk.END)
+            self.message_entry.focus()
+            
+        except Exception as e:
+            print(f"Error selecting user: {str(e)}")
+
+    def handle_delete_note(self, note_id):
+        if messagebox.askyesno("Confirm Delete", "Are you sure you want to delete this note?"):
+            response = delete_note(self.token, note_id)
+            if response.get("success"):
+                messagebox.showinfo("Success", "Note deleted successfully")
+                self.load_notes()  # Refresh list
+            else:
+                messagebox.showerror("Error", response.get("error", "Failed to delete note"))
+
+    def handle_download_note(self, note):
+        try:
+            file_path = filedialog.asksaveasfilename(
+                defaultextension=os.path.splitext(note['filename'])[1],
+                initialfile=note['filename']
+            )
+            if file_path:
+                response = download_note(self.token, note['id'], file_path)
+                if response.get("success"):
+                    messagebox.showinfo("Success", "Note downloaded successfully")
+                else:
+                    messagebox.showerror("Error", response.get("error", "Failed to download note"))
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to download note: {str(e)}")
+
+    def load_notes(self):
+        """Hàm cập nhật danh sách notes"""
+        try:
+            # Xóa notes cũ
+            for widget in self.notes_frame.winfo_children():
+                widget.destroy()
+                
+            # Lấy danh sách notes mới
+            response = get_user_notes(self.token)
+            if response.get("success"):
+                notes = response.get("notes", [])
+                for note in notes:
+                    note_frame = tk.Frame(self.notes_frame, bg='white')
+                    note_frame.pack(fill='x', pady=5, padx=10)
+                    
+                    # Note name
+                    tk.Label(note_frame,
+                        text=note['filename'],
+                        font=('Poppins', 11),
+                        bg='white',
+                        anchor='w').pack(side='left', fill='x', expand=True)
+                        
+                    # Download button
+                    tk.Button(note_frame,
+                        text="↓",
+                        font=('Poppins', 11),
+                        bg='#28a745',
+                        fg='white',
+                        command=lambda n=note: self.handle_download_note(n)).pack(side='right', padx=5)
+                        
+                    # Delete button
+                    tk.Button(note_frame,
+                        text="×",
+                        font=('Poppins', 11),
+                        bg='#dc3545',
+                        fg='white',
+                        command=lambda id=note['id']: self.handle_delete_note(id)).pack(side='right')
+                    
+        except Exception as e:
+            print(f"Error loading notes: {str(e)}")
+    
 if __name__ == "__main__":
     app = App()
     app.root.mainloop()

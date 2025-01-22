@@ -39,19 +39,11 @@ def upload_file(data):
             
         filename = secure_filename(file.filename)
         file_path = os.path.join(Config.UPLOAD_FOLDER, filename)
-
-        # Check if file already exists and rename if necessary
-        base, extension = os.path.splitext(filename)
-        counter = 1
-        while os.path.exists(file_path):
-            filename = f"{base}({counter}){extension}"
-            file_path = os.path.join(Config.UPLOAD_FOLDER, filename)
-            counter += 1
         
-        # Create directory if it doesn't exist
+        # Tạo thư mục nếu chưa tồn tại
         os.makedirs(Config.UPLOAD_FOLDER, exist_ok=True)
         
-        # Save file
+        # Lưu file
         file.save(file_path)
         
         # Lưu vào database
