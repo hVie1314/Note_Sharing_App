@@ -6,13 +6,13 @@ class User(db.Model):
     username = db.Column(db.String(80), unique=True, nullable=False)
     password = db.Column(db.String(255), nullable=False)
     token = db.Column(db.String(255), unique=True)
+    encryption_key = db.Column(db.String(64), nullable=False) # key for encypt/decrpyt notes and share url
 
 class Note(db.Model):
     __tablename__ = 'notes'
     id = db.Column(db.Integer, primary_key=True)
     filename = db.Column(db.String(100), nullable=False)  # Tên file
     file_path = db.Column(db.String(255), nullable=False)  # Đường dẫn lưu file
-    encryption_key = db.Column(db.String(100), nullable=False)  # Khóa mã hóa
     username = db.Column(db.String(80), nullable=False)  # Người upload
 
 class SharedUrl(db.Model):

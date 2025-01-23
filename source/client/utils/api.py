@@ -1,12 +1,11 @@
-import requests
-from .encryption import encrypt_note, decrypt_note
-from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
-from cryptography.hazmat.backends import default_backend
-from cryptography.hazmat.primitives import padding
 import os
+import requests
+from .encryption import encrypt_file, decrypt_file
 
 BASE_URL = "http://127.0.0.1:5000"  # Địa chỉ API server
 
+
+# fetures related to authentication
 def register(username, password):
     response = requests.post(f"{BASE_URL}/auth/register", json={"username": username, "password": password})
     if response.status_code == 201:
@@ -23,7 +22,6 @@ def register(username, password):
             "success": False,
             "message": error_message
         }
-
 
 def login(username, password):
     response = requests.post(f"{BASE_URL}/auth/login", json={"username": username, "password": password})
@@ -42,7 +40,6 @@ def login(username, password):
             "success": False,
             "message": error_message
         }
-
 
 def logout(auth_token):
     headers = {"Authorization": f"Bearer {auth_token}"}
@@ -63,34 +60,40 @@ def logout(auth_token):
             "message": error_message
         }
         
+def get_user_key(auth_token):
+    headers = {"Authorization": f"Bearer {auth_token}"}
+    response = requests.get(f"{BASE_URL}/auth/user_key", headers=headers)
+    if response.status_code == 200:
+        return {
+            "success": True,
+            "encryption_key": response.json().get("encryption_key")
+        }
+    else:
+        return {
+            "success": False,
+            "error": response.json().get("error", "Failed to retrieve user encryption key")
+        } 
 
-def upload_file(auth_token, username, file_path, password):
-    headers = {
-        "Authorization": f"Bearer {auth_token}"
-    }
-    temp_path = None
+
+# features related to encryption file
+def upload_file(auth_token, username, file_path):
     try:
-        print(f"Starting upload for file: {file_path}")
-        
-        # Đọc và mã hóa file
-        with open(file_path, 'rb') as f:
-            content = f.read()
-            encrypted_data = encrypt_note(content, password)
-        
-        # Tạo temporary file
-        temp_filename = f"encrypted_{os.path.basename(file_path)}"
-        temp_path = os.path.join(os.path.dirname(file_path), temp_filename)
-        
-        # Ghi file tạm và upload
-        with open(temp_path, 'wb') as temp_file:
-            temp_file.write(encrypted_data['ciphertext'])
-        
-        with open(temp_path, 'rb') as upload_file:
-            files = {'file': (os.path.basename(file_path), upload_file)}
-            data = {
-                'username': username,
-                'encryption_key': encrypted_data['key']
+        # Lấy khóa mã hóa của người dùng từ server
+        user_key_response = get_user_key(auth_token)
+        if not user_key_response["success"]:
+            return {
+                "success": False,
+                "error": user_key_response["error"]
             }
+        user_key = bytes.fromhex(user_key_response["encryption_key"])
+
+        encrypted_file_info = encrypt_file(file_path, user_key)
+        encrypted_file_path = encrypted_file_info["file_path"]
+
+        with open(encrypted_file_path, 'rb') as f:
+            files = {'file': f}
+            headers = {"Authorization": f"Bearer {auth_token}"}
+            data = {'username': username}
             
             response = requests.post(
                 f"{BASE_URL}/upload",
@@ -98,56 +101,50 @@ def upload_file(auth_token, username, file_path, password):
                 files=files,
                 data=data
             )
+        
+        # Delete the encrypted file after uploading
+        os.remove(encrypted_file_path)
             
-            if response.status_code in [200, 201]:
-                response_data = response.json()
-                return {
-                    "success": True,
-                    "message": response_data.get("message", "File uploaded successfully"),
-                    "file_path": response_data.get("file_path")
-                }
-            else:
-                return {
-                    "success": False,
-                    "error": response.json().get("error", "Upload failed")
-                }
-            
+        if response.status_code == 201:
+            return {
+                "success": True,
+                "message": "File uploaded successfully",
+                "file_path": response.json().get("file_path")
+            }
+        else:
+            return {
+                "success": False,
+                "error": response.json().get("error", "Upload failed")
+            }
+       
     except Exception as e:
-        print(f"Upload error: {str(e)}")
         return {
             "success": False,
             "error": str(e)
         }
-    finally:
-        # Cleanup temp file
-        if temp_path and os.path.exists(temp_path):
-            try:
-                os.remove(temp_path)
-            except Exception as e:
-                print(f"Error removing temp file: {str(e)}")
-
-def create_note(auth_token, note_content, password, expires_at=None):
-    encrypted_note = encrypt_note(note_content, password)  # Mã hóa ghi chú
-    encrypted_note["expires_at"] = expires_at
+        
+def download_and_decrypt_file(auth_token, file_id):
     headers = {"Authorization": f"Bearer {auth_token}"}
-    response = requests.post(
-        f"{BASE_URL}/notes/create",
-        json=encrypted_note,
-        headers=headers,
-    )
-    return response.json()
-
-# Hàm lấy và giải mã ghi chú
-def fetch_and_decrypt_note(auth_token, note_id, password):
-    headers = {"Authorization": f"Bearer {auth_token}"}
-    response = requests.get(f"{BASE_URL}/notes/{note_id}", headers=headers)
+    response = requests.get(f"{BASE_URL}/download/{file_id}", headers=headers)
     if response.status_code == 200:
-        encrypted_note = response.json()
-        decrypted_note = decrypt_note(encrypted_note, password)  # Giải mã ghi chú
-        return {"success": True, "note": decrypted_note}
+        encrypted_file_path = response.json().get("file_path")
+
+        # Lấy khóa mã hóa của người dùng từ server
+        user_key_response = get_user_key(auth_token)
+        if not user_key_response["success"]:
+            return {
+                "success": False,
+                "error": user_key_response["error"]
+            }
+        user_key = bytes.fromhex(user_key_response["encryption_key"])
+
+        decrypted_file_path = decrypt_file(encrypted_file_path, user_key)
+        return {"success": True, "file_path": decrypted_file_path}
     else:
         return {"success": False, "message": response.text}
 
+
+# features related to UI
 def get_users(auth_token):
     headers = {"Authorization": f"Bearer {auth_token}"}
     response = requests.get(f"{BASE_URL}/auth/users", headers=headers)
@@ -216,56 +213,6 @@ def delete_note(auth_token, note_id):
             "success": False,
             "error": str(e)
         }
-
-def download_note(auth_token, note_id, save_path, password):
-    """
-    Download và giải mã file từ server.
-    
-    Args:
-        auth_token (str): Token xác thực
-        note_id (int): ID của note cần download
-        save_path (str): Đường dẫn lưu file
-        password (str): Mật khẩu để giải mã
-        
-    Returns:
-        dict: Kết quả download với status và message
-    """
-    try:
-        headers = {"Authorization": f"Bearer {auth_token}"}
-        
-        # Download encrypted file
-        response = requests.get(
-            f"{BASE_URL}/notes/download/{note_id}",
-            headers=headers
-        )
-        
-        if response.status_code == 200:
-            # Lấy dữ liệu đã mã hóa
-            encrypted_data = {
-                "content": response.json()['content'],
-                "iv": response.json()['iv']
-            }
-            
-            # Giải mã
-            decrypted_content = decrypt_note(encrypted_data, password)
-            
-            # Lưu file
-            with open(save_path, 'wb') as f:
-                f.write(decrypted_content.encode('utf-8'))
-                
-            return {
-                "success": True,
-                "message": "File downloaded successfully",
-                "file_path": save_path
-            }
-        else:
-            return {
-                "success": False,
-                "error": response.json().get("error", "Download failed")
-            }
-            
-    except Exception as e:
-        return {"success": False, "error": str(e)}
     
 def create_share_url(auth_token, note_id, days):
     """Tạo URL chia sẻ cho note với thời hạn"""

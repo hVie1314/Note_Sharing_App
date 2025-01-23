@@ -1,6 +1,6 @@
 import tkinter as tk
 from tkinter import ttk, messagebox, font, filedialog
-from utils.api import register, login, logout, upload_file, get_users, get_user_notes, delete_note, download_note, create_share_url, get_shared_urls
+from utils.api import register, login, logout, upload_file, download_and_decrypt_file, get_users, get_user_notes, delete_note, create_share_url, get_shared_urls
 from PIL import Image, ImageTk
 import os
 
@@ -361,51 +361,25 @@ class App:
         login_link.bind("<Button-1>", lambda e: self.show_login_page())
 
     def handle_upload(self):
-        try:
-            file_path = filedialog.askopenfilename()
-            if file_path:
-                # Tạo dialog để nhập password
-                password_dialog = tk.Toplevel(self.root)
-                password_dialog.title("Enter Password")
-                password_dialog.geometry("300x150")
+        file_path = filedialog.askopenfilename()
+        if file_path:
+            response = upload_file(self.token, self.username, file_path)
+            if response.get("success"):
+                messagebox.showinfo("Success", response.get("message"))
+            else:
+                messagebox.showerror("Error", response.get("message"))
 
-                # Password entry
-                tk.Label(password_dialog, 
-                    text="Enter password to encrypt file:",
-                    font=('Poppins', 10)).pack(pady=10)
-                    
-                password_entry = tk.Entry(password_dialog, show="*")
-                password_entry.pack(pady=10)
-                
-                def submit():
-                    password = password_entry.get()
-                    if password:
-                        # Upload với password
-                        print("Uploading with password...")
-                        response = upload_file(self.token, self.username, file_path, password)
-                        print(f"Upload response: {response}")
-                        
-                        # Check success flag trong response
-                        if response and (response.get("success") or "message" in response):
-                            messagebox.showinfo("Success", "File uploaded successfully")
-                            password_dialog.destroy()
-                            self.load_notes()  # Refresh notes list
-                        else:
-                            error_msg = response.get("error", "Upload failed")
-                            messagebox.showerror("Error", error_msg)
-                            password_dialog.destroy()
-                    
-                # Upload button
-                tk.Button(password_dialog,
-                    text="Upload",
-                    command=submit,
-                    bg='#103cbe',
-                    fg='white',
-                    font=('Poppins', 10)).pack(pady=10)
-                    
-        except Exception as e:
-            print(f"Upload error: {str(e)}")  # Debug log
-            messagebox.showerror("Error", f"Upload failed: {str(e)}")
+    # Chỉnh lại chỗ này không phải nhập file_id thủ công 
+    # mà chọn file trên UI
+    def handle_download(self):
+        pass
+        # file_id = simpledialog.askstring("File ID", "Enter file ID:")
+        # if file_id:
+        #     response = download_and_decrypt_file(self.token, file_id)
+        #     if response.get("success"):
+        #         messagebox.showinfo("Success", f"File downloaded and decrypted: {response.get('file_path')}")
+        #     else:
+        #         messagebox.showerror("Error", response.get("message"))
         
     # Hàm gửi tin nhắn
     def send_message(self):
