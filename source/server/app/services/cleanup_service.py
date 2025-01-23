@@ -7,22 +7,22 @@ import os
 def cleanup_expired(app):
     with app.app_context():
         now = datetime.utcnow()
-        # Cleanup expired notes
-        expired_notes = Note.query.filter(Note.expires_at < now).all()
-        for note in expired_notes:
-            try:
-                os.remove(os.path.join(app.config['NOTES_DIR'], note.filename))
-            except:
-                pass
-            db.session.delete(note)
         
-        # Cleanup expired shared URLs
-        expired_urls = SharedUrl.query.filter(SharedUrl.expires_at < now).all()
-        for url in expired_urls:
-            db.session.delete(url)
-            
-        db.session.commit()
-        print(f"Cleanup completed at {now}")
+        # Tìm các shared URL đã hết hạn
+        expired_shares = SharedUrl.query.filter(SharedUrl.expires_at < now).all()
+        
+        for share in expired_shares:
+            try:
+                db.session.delete(share)
+            except Exception as e:
+                print(f"Error deleting expired share {share.id}: {str(e)}")
+                
+        try:
+            db.session.commit()
+            print(f"Cleaned up {len(expired_shares)} expired shares")
+        except Exception as e:
+            db.session.rollback()
+            print(f"Error committing cleanup: {str(e)}")
 
 def init_cleanup_scheduler(app):
     scheduler = BackgroundScheduler()

@@ -361,18 +361,24 @@ class App:
         login_link.bind("<Button-1>", lambda e: self.show_login_page())
 
     def handle_upload(self):
-        file_path = filedialog.askopenfilename()
-        if file_path:
-            response = upload_file(self.token, self.username, file_path)
-            if response.get("success"):
-                messagebox.showinfo("Success", response.get("message"))
-            else:
-                messagebox.showerror("Error", response.get("message"))
+        try:
+            file_path = filedialog.askopenfilename()
+            if file_path:
+                # Sử dụng trực tiếp upload_file với token và username
+                response = upload_file(self.token, self.username, file_path)
+                if response.get("success"):
+                    messagebox.showinfo("Success", "File uploaded successfully")
+                    self.load_notes()  # Refresh danh sách notes
+                else:
+                    messagebox.showerror("Error", response.get("error", "Upload failed"))
+                    
+        except Exception as e:
+            messagebox.showerror("Error", f"Upload failed: {str(e)}")
 
     # Chỉnh lại chỗ này không phải nhập file_id thủ công 
     # mà chọn file trên UI
-    def handle_download(self):
-        pass
+    #def handle_download(self):
+    #    pass
         # file_id = simpledialog.askstring("File ID", "Enter file ID:")
         # if file_id:
         #     response = download_and_decrypt_file(self.token, file_id)
@@ -687,16 +693,39 @@ class App:
 
     def handle_download_note(self, note):
         try:
+            # Lấy tên file gốc không có đuôi .enc
+            original_filename = note['filename'].replace('.enc', '')
+            
+            # Chọn vị trí lưu file với tên gốc
             file_path = filedialog.asksaveasfilename(
-                defaultextension=os.path.splitext(note['filename'])[1],
-                initialfile=note['filename']
+                defaultextension=os.path.splitext(original_filename)[1],
+                initialfile=original_filename
             )
+            
             if file_path:
-                response = download_note(self.token, note['id'], file_path)
+                # Kiểm tra file đã tồn tại
+                counter = 1
+                base, ext = os.path.splitext(file_path)
+                while os.path.exists(file_path):
+                    file_path = f"{base}({counter}){ext}"
+                    counter += 1
+
+                # Download và giải mã file
+                response = download_and_decrypt_file(self.token, note['id'])
+                
                 if response.get("success"):
-                    messagebox.showinfo("Success", "Note downloaded successfully")
+                    try:
+                        # Copy file đã giải mã đến vị trí đã chọn
+                        import shutil
+                        shutil.copy2(response["file_path"], file_path)
+                        # Xóa file tạm
+                        os.remove(response["file_path"])
+                        messagebox.showinfo("Success", "File downloaded and decrypted successfully")
+                    except Exception as e:
+                        messagebox.showerror("Error", f"Error saving file: {str(e)}")
                 else:
                     messagebox.showerror("Error", response.get("error", "Failed to download note"))
+                    
         except Exception as e:
             messagebox.showerror("Error", f"Failed to download note: {str(e)}")
 

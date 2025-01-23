@@ -26,6 +26,9 @@ def encrypt_file(file_path: str, key: bytes) -> dict:
     }
 
 def decrypt_file(encrypted_file_path: str, key: bytes) -> str:
+    """
+    Giải mã file và lưu với tên gốc
+    """
     with open(encrypted_file_path, 'rb') as f:
         iv = f.read(16)
         ciphertext = f.read()
@@ -37,7 +40,8 @@ def decrypt_file(encrypted_file_path: str, key: bytes) -> str:
     unpadder = padding.PKCS7(128).unpadder()
     original_data = unpadder.update(decrypted_data) + unpadder.finalize()
 
-    decrypted_file_path = encrypted_file_path.replace('.enc', '.dec')
+    # Bỏ đuôi .enc để lấy tên file gốc
+    decrypted_file_path = encrypted_file_path.replace('.enc', '')
     with open(decrypted_file_path, 'wb') as f:
         f.write(original_data)
 

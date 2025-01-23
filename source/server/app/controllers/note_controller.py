@@ -235,3 +235,25 @@ def get_shared_urls_by_user(username):
         }), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+    
+def download_note(note_id):
+    try:
+        # Verify token và user
+        token = request.headers.get('Authorization').split(" ")[1]
+        user = User.query.filter_by(token=token).first()
+        
+        note = Note.query.get(note_id)
+        if note:
+            # Check file path tồn tại
+            absolute_path = os.path.abspath(note.file_path)
+            if not os.path.exists(absolute_path):
+                return jsonify({"error": "File not found on server"}), 404
+
+            return jsonify({
+                "success": True,
+                "file_path": absolute_path,  # Trả về đường dẫn tuyệt đối
+                "filename": note.filename
+            }), 200
+        
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500

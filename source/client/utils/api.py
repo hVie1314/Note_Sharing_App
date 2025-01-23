@@ -125,23 +125,40 @@ def upload_file(auth_token, username, file_path):
         
 def download_and_decrypt_file(auth_token, file_id):
     headers = {"Authorization": f"Bearer {auth_token}"}
-    response = requests.get(f"{BASE_URL}/download/{file_id}", headers=headers)
-    if response.status_code == 200:
-        encrypted_file_path = response.json().get("file_path")
+    temp_decrypted_file = None
+    try:
+        response = requests.get(f"{BASE_URL}/download/{file_id}", headers=headers)
+        if response.status_code == 200:
+            encrypted_file_path = response.json().get("file_path")
+            filename = response.json().get("filename")
 
-        # Lấy khóa mã hóa của người dùng từ server
-        user_key_response = get_user_key(auth_token)
-        if not user_key_response["success"]:
+            # Lấy user key để giải mã
+            user_key_response = get_user_key(auth_token)
+            if not user_key_response["success"]:
+                return {
+                    "success": False,
+                    "error": user_key_response["error"]
+                }
+            user_key = bytes.fromhex(user_key_response["encryption_key"])
+
+            # Giải mã file vào temporary file
+            temp_decrypted_file = decrypt_file(encrypted_file_path, user_key)
+
             return {
-                "success": False,
-                "error": user_key_response["error"]
+                "success": True,
+                "file_path": temp_decrypted_file,
+                "filename": filename
             }
-        user_key = bytes.fromhex(user_key_response["encryption_key"])
-
-        decrypted_file_path = decrypt_file(encrypted_file_path, user_key)
-        return {"success": True, "file_path": decrypted_file_path}
-    else:
-        return {"success": False, "message": response.text}
+    except Exception as e:
+        if temp_decrypted_file and os.path.exists(temp_decrypted_file):
+            try:
+                os.remove(temp_decrypted_file)
+            except:
+                pass
+        return {
+            "success": False,
+            "error": str(e)
+        }
 
 
 # features related to UI
