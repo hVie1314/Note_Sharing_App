@@ -1,6 +1,6 @@
 import tkinter as tk
 from tkinter import ttk, messagebox, font, filedialog
-from utils.api import register, login, logout, upload_file
+from utils.api import register, login, logout, upload_file, download_and_decrypt_file, get_users, get_user_notes, delete_note, create_share_url, get_shared_urls
 from PIL import Image, ImageTk
 import os
 
@@ -32,6 +32,7 @@ class App:
 
         self.current_frame = None
         self.token = None
+        self.username = None
         self.show_login_page()
 
     def set_window_position(self, width, height):
@@ -170,7 +171,9 @@ class App:
             response = login(username, password)
             if response.get("success"):
                 self.token = response.get("token")
+                self.username = username
                 self.show_dashboard()
+                self.load_notes()
             else:
                 messagebox.showerror("Error", response.get("message", "Login failed"))
 
@@ -358,49 +361,487 @@ class App:
         login_link.bind("<Button-1>", lambda e: self.show_login_page())
 
     def handle_upload(self):
-            file_path = filedialog.askopenfilename()
-            if file_path:
-                response = upload_file(self.token, self.username, file_path)
-                if response.get("success"):
-                    messagebox.showinfo("Success", response.get("message"))
-                else:
-                    messagebox.showerror("Error", response.get("message"))
+        file_path = filedialog.askopenfilename()
+        if file_path:
+            response = upload_file(self.token, self.username, file_path)
+            if response.get("success"):
+                messagebox.showinfo("Success", response.get("message"))
+            else:
+                messagebox.showerror("Error", response.get("message"))
+
+    # Chỉnh lại chỗ này không phải nhập file_id thủ công 
+    # mà chọn file trên UI
+    def handle_download(self):
+        pass
+        # file_id = simpledialog.askstring("File ID", "Enter file ID:")
+        # if file_id:
+        #     response = download_and_decrypt_file(self.token, file_id)
+        #     if response.get("success"):
+        #         messagebox.showinfo("Success", f"File downloaded and decrypted: {response.get('file_path')}")
+        #     else:
+        #         messagebox.showerror("Error", response.get("message"))
         
+    # Hàm gửi tin nhắn
+    def send_message(self):
+        try:
+            if not hasattr(self, 'selected_user'):
+                messagebox.showwarning("Warning", "Please select a user to chat with")
+                return
+                
+            message = self.message_entry.get().strip()
+            if not message:
+                return
+                
+            # TODO: Implement send message API call
+            print(f"Sending message to {self.selected_user}: {message}")
+            
+            # Clear input after sending
+            self.message_entry.delete(0, tk.END)
+            
+            # Add message to chat area (temporary)
+            self.add_message_to_chat(self.username, message)
+            
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to send message: {str(e)}")
+    
+    def add_message_to_chat(self, sender, message):
+        message_frame = tk.Frame(self.messages_frame, bg='white')
+        message_frame.pack(fill='x', padx=10, pady=5)
+        
+        tk.Label(
+            message_frame,
+            text=f"{sender}: {message}",
+            font=('Poppins', 10),
+            bg='white',
+            anchor='w',
+            wraplength=350
+        ).pack(fill='x')
 
     def show_dashboard(self):
-        # Update dashboard with new style
         if self.current_frame:
             self.current_frame.destroy()
 
-        self.current_frame = tk.Frame(self.root, bg='white')
-        self.current_frame.pack(fill="both", expand=True, padx=20, pady=20)
+        # Frame chính
+        self.current_frame = tk.Frame(self.root, bg='#f0f2f5')  # Background màu xám nhạt
+        self.current_frame.pack(fill="both", expand=True)
 
-        # Dashboard header
-        header_frame = tk.Frame(self.current_frame, bg='white')
-        header_frame.pack(fill='x', pady=20)
+        # Taskbar
+        taskbar = tk.Frame(self.current_frame, bg='#103cbe', height=50)
+        taskbar.pack(fill='x')
         
-        tk.Label(header_frame, 
-                text="Dashboard", 
-                font=("Arial", 24, "bold"),
-                bg='white').pack(side='left', padx=20)
+        # Dashboard label
+        tk.Label(taskbar, text="Dashboard", font=('Poppins', 14, 'bold'),
+            bg='#103cbe', fg='white').pack(side='left', padx=20)
+        
+        # User info frame
+        right_frame = tk.Frame(taskbar, bg='#103cbe')
+        right_frame.pack(side='right', padx=20)
+        tk.Label(right_frame, text=self.username, font=('Poppins', 12),
+            bg='#103cbe', fg='white').pack(side='left', padx=(0, 10))
+        tk.Button(right_frame, text="Logout", font=('Poppins', 10),
+            bg='white', fg='#103cbe', command=self.handle_logout).pack(side='left')
 
-        # Logout button với style mới
-        tk.Button(header_frame,
-                 text="Logout",
-                 command=self.handle_logout,
-                 bg="#103cbe",
-                 fg="white",
-                 font=("Arial", 12)).pack(side='right', padx=20)
+        # Container cho 3 phần chính
+        content = tk.Frame(self.current_frame, bg='#f0f2f5')
+        content.pack(fill='both', expand=True, padx=20, pady=20)
+        content.grid_columnconfigure(0, weight=2)  # Users list
+        content.grid_columnconfigure(1, weight=3)  # Chat area 
+        content.grid_columnconfigure(2, weight=2) # Chat area rộng gấp 2
 
+        # Set chiều cao cố định cho container
+        window_height = self.root.winfo_height()
+        frame_height = window_height - 120  # Trừ đi chiều cao của taskbar và padding
+
+        # 1. Users List với border và chiều cao cố định
+        users_frame = tk.Frame(content, bg='white', width=300, height=frame_height,
+            highlightbackground='#dee2e6',
+            highlightthickness=1,
+            relief='ridge',
+            bd=0)
+        users_frame.grid(row=0, column=0, sticky='nsew', padx=10, pady=10)
+        users_frame.grid_propagate(False)  # Giữ kích thước cố định
+        users_frame.pack_propagate(False)  # Ngăn co giãn theo nội dung
+
+        # 2. Chat Area với border và chiều cao cố định
+        chat_frame = tk.Frame(content, bg='white', width=500, height=frame_height,
+            highlightbackground='#dee2e6',
+            highlightthickness=1,
+            relief='ridge',
+            bd=0)
+        chat_frame.grid(row=0, column=1, sticky='nsew', padx=10, pady=10)
+        chat_frame.grid_propagate(False)
+
+        # 3. Notes List với border và chiều cao cố định
+        notes_frame = tk.Frame(content, bg='white', width=300, height=frame_height,
+            highlightbackground='#dee2e6',
+            highlightthickness=1,
+            relief='ridge',
+            bd=0)
+        notes_frame.grid(row=0, column=2, sticky='nsew', padx=10, pady=10)
+        notes_frame.grid_propagate(False)
+        notes_frame.pack_propagate(False)
+
+        # Setup scrollable content
+        self.setup_users_list(users_frame)
+        self.setup_chat_area(chat_frame)
+        self.setup_notes_list(notes_frame)
+        self.load_notes()
+        
+    def setup_users_list(self, frame):
+        # Header
+        header = tk.Label(frame, text="Chat", font=('Poppins', 14, 'bold'),
+            bg='white')
+        header.pack(pady=10)
+
+        # Scrollable container
+        canvas = tk.Canvas(frame, bg='white', highlightthickness=0)
+        scrollbar = ttk.Scrollbar(frame, orient="vertical", command=canvas.yview)
+        users_list_frame = tk.Frame(canvas, bg='white')
+
+        # Configure scrolling
+        users_list_frame.bind(
+            "<Configure>",
+            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+        )
+        canvas.create_window((0, 0), window=users_list_frame, anchor="nw")
+
+        # Get và hiển thị users
+        response = get_users(self.token)
+        if response.get("success"):
+            users = response.get("users", [])
+            for user in users:
+                if user['username'] != self.username:
+                    user_frame = tk.Frame(users_list_frame, bg='white', cursor='hand2')
+                    user_frame.pack(fill='x', pady=2)
+                    
+                    # User label với hover effect
+                    user_label = tk.Label(
+                        user_frame,
+                        text=user['username'],
+                        font=('Poppins', 12),
+                        bg='white',
+                        anchor='w',
+                        padx=20,
+                        pady=10
+                    )
+                    user_label.pack(fill='x')
+                    
+                    # Bind click event
+                    user_frame.bind('<Button-1>', 
+                        lambda e, u=user['username']: self.select_user(u))
+                    user_label.bind('<Button-1>', 
+                        lambda e, u=user['username']: self.select_user(u))
+
+        canvas.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
+
+    def setup_chat_area(self, frame):
+        # Header
+        header = tk.Frame(frame, bg='white', height=60)
+        header.pack(fill='x')
+        
+        self.chat_user_label = tk.Label(header,
+            text="Select a user to view shared URLs",
+            font=('Poppins', 14, 'bold'),
+            bg='white')
+        self.chat_user_label.pack(pady=10)
+        
+        # URLs area with scroll
+        urls_canvas = tk.Canvas(frame, bg='white')
+        urls_scrollbar = ttk.Scrollbar(frame, orient="vertical", command=urls_canvas.yview)
+        self.shared_urls_frame = tk.Frame(urls_canvas, bg='white')
+        
+        self.shared_urls_frame.bind(
+            "<Configure>",
+            lambda e: urls_canvas.configure(scrollregion=urls_canvas.bbox("all"))
+        )
+        
+        urls_canvas.create_window((0, 0), window=self.shared_urls_frame, anchor="nw")
+        urls_canvas.configure(yscrollcommand=urls_scrollbar.set)
+        
+        urls_canvas.pack(side="left", fill="both", expand=True)
+        urls_scrollbar.pack(side="right", fill="y")
+
+    def setup_notes_list(self, frame):
+        # Header
+        header = tk.Frame(frame, bg='white', height=50)
+        header.pack(fill='x')
+        tk.Label(header,
+            text="My Notes",
+            font=('Poppins', 14, 'bold'),
+            bg='white').pack(pady=10)
         
         # Upload button
-        tk.Button(self.current_frame, 
-                  text="Upload File", 
-                  command=self.handle_upload, 
-                  font=("Arial", 12)).pack(side='left', padx=80)
+        upload_btn = tk.Button(frame,
+            text="Upload Note",
+            bg='#103cbe',
+            fg='white',
+            font=('Poppins', 10),
+            width=20,
+            command=self.handle_upload)
+        upload_btn.pack(pady=10)
         
-        # ...rest of dashboard code...
+        # Notes list with scroll
+        notes_canvas = tk.Canvas(frame, bg='white')
+        notes_scrollbar = ttk.Scrollbar(frame, orient="vertical", command=notes_canvas.yview)
+        self.notes_frame = tk.Frame(notes_canvas, bg='white')
 
+        self.notes_frame.bind(
+            "<Configure>",
+            lambda e: notes_canvas.configure(scrollregion=notes_canvas.bbox("all"))
+        )
+
+        notes_canvas.create_window((0, 0), window=self.notes_frame, anchor="nw")
+        notes_canvas.configure(yscrollcommand=notes_scrollbar.set)
+
+        # Load và hiển thị notes
+        response = get_user_notes(self.token)
+        if response.get("success"):
+            notes = response.get("notes", [])
+            for note in notes:
+                note_frame = tk.Frame(self.notes_frame, bg='white')
+                note_frame.pack(fill='x', pady=5, padx=10)
+                
+                # Note name
+                tk.Label(note_frame,
+                    text=note['filename'],
+                    font=('Poppins', 11),
+                    bg='white',
+                    anchor='w').pack(side='left', fill='x', expand=True)
+                    
+                # Download button
+                tk.Button(note_frame,
+                    text="↓",
+                    font=('Poppins', 11),
+                    bg='#28a745',
+                    fg='white',
+                    command=lambda n=note: self.handle_download_note(n)).pack(side='right', padx=5)
+                    
+                # Delete button
+                tk.Button(note_frame,
+                    text="×",
+                    font=('Poppins', 11),
+                    bg='#dc3545',
+                    fg='white',
+                    command=lambda id=note['id']: self.handle_delete_note(id)).pack(side='right')
+
+        notes_canvas.pack(side="left", fill="both", expand=True)
+        notes_scrollbar.pack(side="right", fill="y")
+
+    def select_user(self, username):
+        try:
+            self.selected_user = username
+            self.chat_user_label.configure(
+                text=f"Shared URLs from {username}",
+                bg='#f8f9fa'
+            )
+            
+            # Xóa URLs cũ
+            for widget in self.shared_urls_frame.winfo_children():
+                widget.destroy()
+                
+            # Load shared URLs
+            response = get_shared_urls(self.token, username)
+            if response.get("success"):
+                urls = response.get("shared_urls", [])
+                if urls:
+                    for url in urls:
+                        url_frame = tk.Frame(self.shared_urls_frame, bg='white')
+                        url_frame.pack(fill='x', pady=5, padx=10)
+                        
+                        # URL
+                        tk.Label(url_frame,
+                        text=f"URL: {url['url']}",
+                        font=('Poppins', 11),
+                        bg='white').pack(anchor='w')
+                            
+                        # Expires at
+                        tk.Label(url_frame,
+                            text=f"Expires: {url['expires_at']}",
+                            font=('Poppins', 9),
+                            fg='gray').pack(anchor='w')
+                        
+                        # Access button
+                        tk.Button(url_frame,
+                            text="Access",
+                            font=('Poppins', 10),
+                            bg='#28a745',
+                            fg='white',
+                            command=lambda u=url: self.access_shared_note(u)).pack(anchor='e')
+                else:
+                    tk.Label(self.shared_urls_frame,
+                        text="No shared URLs",
+                        font=('Poppins', 11),
+                        bg='white').pack(pady=20)
+        except Exception as e:
+            print(f"Error loading shared URLs: {str(e)}")
+
+    def handle_delete_note(self, note_id):
+        if messagebox.askyesno("Confirm Delete", "Are you sure you want to delete this note?"):
+            response = delete_note(self.token, note_id)
+            if response.get("success"):
+                messagebox.showinfo("Success", "Note deleted successfully")
+                self.load_notes()  # Refresh list
+            else:
+                messagebox.showerror("Error", response.get("error", "Failed to delete note"))
+
+    def handle_download_note(self, note):
+        try:
+            file_path = filedialog.asksaveasfilename(
+                defaultextension=os.path.splitext(note['filename'])[1],
+                initialfile=note['filename']
+            )
+            if file_path:
+                response = download_note(self.token, note['id'], file_path)
+                if response.get("success"):
+                    messagebox.showinfo("Success", "Note downloaded successfully")
+                else:
+                    messagebox.showerror("Error", response.get("error", "Failed to download note"))
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to download note: {str(e)}")
+
+    def load_notes(self):
+        try:
+            # Xóa notes cũ
+            for widget in self.notes_frame.winfo_children():
+                widget.destroy()
+                
+            response = get_user_notes(self.token)
+            if response.get("success"):
+                notes = response.get("notes", [])
+                for note in notes:
+                    note_frame = tk.Frame(self.notes_frame, bg='white')
+                    note_frame.pack(fill='x', pady=5, padx=10)
+                    
+                    # Note name
+                    tk.Label(note_frame,
+                        text=note['filename'],
+                        font=('Poppins', 11),
+                        bg='white',
+                        anchor='w').pack(side='left', fill='x', expand=True)
+                    
+                    buttons_frame = tk.Frame(note_frame, bg='white')
+                    buttons_frame.pack(side='right')
+                    
+                    # Share URL button 
+                    tk.Button(buttons_frame,
+                        text="🔗",
+                        font=('Poppins', 11),
+                        bg='#0d6efd',
+                        fg='white',
+                        command=lambda n=note: self.create_share_url(n)).pack(side='right', padx=2)
+                    
+                    # Download button
+                    tk.Button(buttons_frame,
+                        text="↓",
+                        font=('Poppins', 11),
+                        bg='#28a745',
+                        fg='white',
+                        command=lambda n=note: self.handle_download_note(n)).pack(side='right', padx=2)
+                    
+                    # Delete button
+                    tk.Button(buttons_frame,
+                        text="×",
+                        font=('Poppins', 11),
+                        bg='#dc3545',
+                        fg='white',
+                        command=lambda id=note['id']: self.handle_delete_note(id)).pack(side='right', padx=2)
+                        
+        except Exception as e:
+            print(f"Error loading notes: {str(e)}")
+
+    def create_share_url(self, note):
+        try:
+            # Tạo dialog chọn user
+            select_user_dialog = tk.Toplevel(self.root)
+            select_user_dialog.title("Select User")
+            select_user_dialog.geometry("400x300")
+            
+            # Label hướng dẫn
+            tk.Label(select_user_dialog,
+                text="Chọn user để chia sẻ:",
+                font=('Poppins', 10)).pack(pady=10)
+            
+            # Frame chứa danh sách users
+            users_frame = tk.Frame(select_user_dialog)
+            users_frame.pack(fill='both', expand=True, padx=10)
+            
+            # Lấy danh sách users
+            response = get_users(self.token)
+            selected_user = tk.StringVar()
+            
+            if response.get("success"):
+                users = response.get("users", [])
+                for user in users:
+                    if user['username'] != self.username:  # Không hiển thị user hiện tại
+                        tk.Radiobutton(users_frame,
+                            text=user['username'],
+                            variable=selected_user,
+                            value=user['username'],
+                            font=('Poppins', 10)).pack(anchor='w', pady=5)
+            
+            def next_step():
+                user = selected_user.get()
+                if not user:
+                    messagebox.showwarning("Warning", "Vui lòng chọn user")
+                    return
+                    
+                # Đóng dialog chọn user
+                select_user_dialog.destroy()
+                
+                # Mở dialog nhập thời hạn
+                expiry_dialog = tk.Toplevel(self.root)
+                expiry_dialog.title("Set Expiry Date")
+                expiry_dialog.geometry("400x200")
+                
+                tk.Label(expiry_dialog,
+                    text=f"Nhập số ngày URL có hiệu lực cho user {user}:",
+                    font=('Poppins', 10)).pack(pady=10)
+                
+                days_entry = tk.Entry(expiry_dialog)
+                days_entry.pack(pady=10)
+                
+                def submit():
+                    try:
+                        days = int(days_entry.get())
+                        if days <= 0:
+                            messagebox.showerror("Error", "Số ngày phải lớn hơn 0")
+                            return
+                            
+                        response = create_share_url(self.token, note['id'], days)
+                        if response.get("success"):
+                            url = response.get("url")
+                            self.root.clipboard_clear()
+                            self.root.clipboard_append(url)
+                            messagebox.showinfo("Success", 
+                                f"Share URL đã được tạo và copy vào clipboard!\nURL có hiệu lực trong {days} ngày\nĐã chia sẻ cho user: {user}\nURL: {url}")
+                            expiry_dialog.destroy()
+                        else:
+                            messagebox.showerror("Error", 
+                                response.get("error", "Không thể tạo share URL"))
+                            expiry_dialog.destroy()
+                            
+                    except ValueError:
+                        messagebox.showerror("Error", "Vui lòng nhập số ngày hợp lệ")
+                
+                tk.Button(expiry_dialog,
+                    text="Tạo URL",
+                    command=submit,
+                    bg='#0d6efd',
+                    fg='white',
+                    font=('Poppins', 10)).pack(pady=10)
+                    
+            # Button next
+            tk.Button(select_user_dialog,
+                text="Tiếp tục",
+                command=next_step,
+                bg='#0d6efd',
+                fg='white',
+                font=('Poppins', 10)).pack(pady=20)
+                
+        except Exception as e:
+            messagebox.showerror("Error", str(e))
+    
 if __name__ == "__main__":
     app = App()
     app.root.mainloop()

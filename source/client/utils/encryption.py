@@ -3,52 +3,42 @@ from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import padding
 import os
 
-# Hàm tạo khóa AES
-def generate_key(password: str) -> bytes:
-    # Dùng hash SHA-256 của mật khẩu làm khóa AES
-    return password.encode('utf-8').ljust(32, b'\0')[:32]  # 32 bytes cho AES-256
 
-# Hàm mã hóa ghi chú
-def encrypt_note(note_content: str, password: str) -> dict:
-    key = generate_key(password)  # Tạo khóa từ mật khẩu
-    iv = os.urandom(16)  # Tạo vector khởi tạo ngẫu nhiên 16 bytes cho CBC mode
+def encrypt_file(file_path: str, key: bytes) -> dict:
+    iv = os.urandom(16)
     
-    # Chuyển đổi nội dung ghi chú thành bytes
-    note_bytes = note_content.encode('utf-8')
-
-    # Padding dữ liệu để nó có độ dài bội số của block size (16 bytes cho AES)
+    with open(file_path, 'rb') as f:
+        file_data = f.read()
+    
     padder = padding.PKCS7(128).padder()
-    padded_data = padder.update(note_bytes) + padder.finalize()
+    padded_data = padder.update(file_data) + padder.finalize()
 
-    # Khởi tạo AES cipher với chế độ CBC
     cipher = Cipher(algorithms.AES(key), modes.CBC(iv), backend=default_backend())
     encryptor = cipher.encryptor()
-
-    # Mã hóa dữ liệu
     ciphertext = encryptor.update(padded_data) + encryptor.finalize()
 
-    # Trả về kết quả dưới dạng dictionary (bao gồm ciphertext và iv)
+    encrypted_file_path = file_path + '.enc'
+    with open(encrypted_file_path, 'wb') as f:
+        f.write(iv + ciphertext)
+
     return {
-        "ciphertext": ciphertext,
-        "iv": iv
+        "file_path": encrypted_file_path
     }
 
-# Hàm giải mã ghi chú
-def decrypt_note(encrypted_note: dict, password: str) -> str:
-    key = generate_key(password)
-    iv = encrypted_note["iv"]
-    ciphertext = encrypted_note["ciphertext"]
-
-    # Khởi tạo AES cipher với chế độ CBC
+def decrypt_file(encrypted_file_path: str, key: bytes) -> str:
+    with open(encrypted_file_path, 'rb') as f:
+        iv = f.read(16)
+        ciphertext = f.read()
+    
     cipher = Cipher(algorithms.AES(key), modes.CBC(iv), backend=default_backend())
     decryptor = cipher.decryptor()
-
-    # Giải mã dữ liệu
     decrypted_data = decryptor.update(ciphertext) + decryptor.finalize()
 
-    # Loại bỏ padding
     unpadder = padding.PKCS7(128).unpadder()
     original_data = unpadder.update(decrypted_data) + unpadder.finalize()
 
-    # Chuyển lại thành chuỗi
-    return original_data.decode('utf-8')
+    decrypted_file_path = encrypted_file_path.replace('.enc', '.dec')
+    with open(decrypted_file_path, 'wb') as f:
+        f.write(original_data)
+
+    return decrypted_file_path
