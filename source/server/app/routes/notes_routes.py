@@ -24,7 +24,15 @@ def share_note_route():
 @note_bp.route('/notes/access', methods=['GET'])
 @token_required
 def access_shared_note_route():
-    return access_shared_note()
+    data = request.json
+    return access_shared_note(data)
+
+
+@note_bp.route('/notes/access/user_key', methods=['GET'])
+@token_required
+def get_sharing_key():
+    data = request.json
+    return access_shared_note(data)
 
 @note_bp.route('/notes/list', methods=['GET'])
 @token_required

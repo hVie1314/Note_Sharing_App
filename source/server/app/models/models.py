@@ -23,3 +23,4 @@ class SharedUrl(db.Model):
     expires_at = db.Column(db.DateTime, nullable=False)
     username = db.Column(db.String(80), nullable=False)  # Thêm username
     note = db.relationship('Note')
+    user_key = db.Column(db.String(64), nullable=False) 

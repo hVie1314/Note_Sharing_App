@@ -188,6 +188,33 @@ def get_user_notes(auth_token):
             "error": str(e)
         }
     
+def get_sharing_notes(auth_token, url):
+    headers = {
+        "Authorization": f"Bearer {auth_token}"
+    }
+    try:
+        response = requests.get(
+            f"{BASE_URL}/notes/access",
+            headers=headers,
+            json={
+                "url_id": url,
+            }
+        )
+        
+        if response.status_code == 200:
+            return response.json()
+        else:
+            return {
+                "success": False,
+                "error": response.json().get("error", "Unknown error")
+            }
+            
+    except requests.exceptions.RequestException as e:
+        return {
+            "success": False,
+            "error": str(e)
+        }
+    
 def delete_note(auth_token, note_id):
     headers = {
         "Authorization": f"Bearer {auth_token}"
@@ -214,18 +241,29 @@ def delete_note(auth_token, note_id):
             "error": str(e)
         }
     
-def create_share_url(auth_token, note_id, days):
+def create_share_url(auth_token, note_id, days, hours, minutes):
     """Tạo URL chia sẻ cho note với thời hạn"""
     headers = {
         "Authorization": f"Bearer {auth_token}"
     }
     try:
+         # Lấy khóa mã hóa của người dùng từ server
+        user_key_response = get_user_key(auth_token)
+        if not user_key_response["success"]:
+            return {
+                "success": False,
+                "error": user_key_response["error"]
+            }
+        user_key = bytes.fromhex(user_key_response["encryption_key"])
         response = requests.post(
             f"{BASE_URL}/notes/share",
             headers=headers,
             json={
                 "note_id": note_id,
-                "expires_days": days  # Thêm số ngày hết hạn
+                "expires_days": days,  # Thêm số ngày hết hạn
+                "expires_hours": hours,
+                "expires_minutes": minutes,
+                "user_key": user_key_response["encryption_key"],
             }
         )
         
