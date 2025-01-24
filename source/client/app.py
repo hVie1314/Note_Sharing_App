@@ -1,6 +1,6 @@
 import tkinter as tk
 from tkinter import ttk, messagebox, font, filedialog
-from utils.api import register, login, logout, upload_file, download_and_decrypt_file, get_users, get_user_notes, delete_note, create_share_url, get_shared_urls, get_sharing_notes
+from utils.api import register, login, logout, upload_file, download_and_decrypt_file, download_and_decrypt_shared_file, get_users, get_user_notes, delete_note, create_share_url, get_shared_urls_with_input, get_sharing_notes
 from PIL import Image, ImageTk
 import os
 
@@ -34,6 +34,7 @@ class App:
         self.current_frame = None
         self.token = None
         self.username = None
+        self.isAccess = False
         self.show_login_page()
 
     def set_window_position(self, width, height):
@@ -369,18 +370,24 @@ class App:
         login_link.bind("<Button-1>", lambda e: self.show_login_page())
 
     def handle_upload(self):
-        file_path = filedialog.askopenfilename()
-        if file_path:
-            response = upload_file(self.token, self.username, file_path)
-            if response.get("success"):
-                messagebox.showinfo("Success", response.get("message"))
-            else:
-                messagebox.showerror("Error", response.get("message"))
+        try:
+            file_path = filedialog.askopenfilename()
+            if file_path:
+                # Sử dụng trực tiếp upload_file với token và username
+                response = upload_file(self.token, self.username, file_path)
+                if response.get("success"):
+                    messagebox.showinfo("Success", "File uploaded successfully")
+                    self.load_notes()  # Refresh danh sách notes
+                else:
+                    messagebox.showerror("Error", response.get("error", "Upload failed"))
+                    
+        except Exception as e:
+            messagebox.showerror("Error", f"Upload failed: {str(e)}")
 
     # Chỉnh lại chỗ này không phải nhập file_id thủ công
     # mà chọn file trên UI
-    def handle_download(self):
-        pass
+    #def handle_download(self):
+    #    pass
         # file_id = simpledialog.askstring("File ID", "Enter file ID:")
         # if file_id:
         #     response = download_and_decrypt_file(self.token, file_id)
@@ -659,18 +666,59 @@ class App:
 
     def handle_download_note(self, note):
         try:
+            # Lấy tên file gốc không có đuôi .enc
+            original_filename = note['filename'].replace('.enc', '')
+            
+            # Chọn vị trí lưu file với tên gốc
             file_path = filedialog.asksaveasfilename(
-                defaultextension=os.path.splitext(note['filename'])[1],
-                initialfile=note['filename']
+                defaultextension=os.path.splitext(original_filename)[1],
+                initialfile=original_filename
             )
+            
             if file_path:
-                response = download_note(self.token, note['id'], file_path)
+                # Kiểm tra file đã tồn tại
+                counter = 1
+                base, ext = os.path.splitext(file_path)
+                while os.path.exists(file_path):
+                    file_path = f"{base}({counter}){ext}"
+                    counter += 1
+
+                # Download và giải mã file
+                response = download_and_decrypt_file(self.token, note['id'])
+                
                 if response.get("success"):
-                    messagebox.showinfo(
-                        "Success", "Note downloaded successfully")
+                    messagebox.showinfo("Success", "Note downloaded successfully")
                 else:
-                    messagebox.showerror("Error", response.get(
-                        "error", "Failed to download note"))
+                    messagebox.showerror("Error", response.get("error", "Failed to download note"))
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to download note: {str(e)}")
+
+    def handle_download_shared_note(self, note, url):
+        try:
+            # Lấy tên file gốc không có đuôi .enc
+            original_filename = note['filename'].replace('.enc', '')
+            
+            # Chọn vị trí lưu file với tên gốc
+            file_path = filedialog.asksaveasfilename(
+                defaultextension=os.path.splitext(original_filename)[1],
+                initialfile=original_filename
+            )
+            
+            if file_path:
+                # Kiểm tra file đã tồn tại
+                counter = 1
+                base, ext = os.path.splitext(file_path)
+                while os.path.exists(file_path):
+                    file_path = f"{base}({counter}){ext}"
+                    counter += 1
+
+                # Download và giải mã file
+                response = download_and_decrypt_shared_file(self.token, note['id'], url)
+                
+                if response.get("success"):
+                    messagebox.showinfo("Success", "Note downloaded successfully")
+                else:
+                    messagebox.showerror("Error", response.get("error", "Failed to download note"))
         except Exception as e:
             messagebox.showerror("Error", f"Failed to download note: {str(e)}")
 
@@ -737,51 +785,102 @@ class App:
             for widget in self.shared_urls_frame.winfo_children():
                 widget.destroy()
 
-            # Load shared URLs
-            response = get_shared_urls(self.token, username)
-            if response.get("success"):
-                urls = response.get("shared_urls", [])
-                if urls:
-                    for url in urls:
-                        url_frame = tk.Frame(
-                            self.shared_urls_frame, bg='white')
-                        url_frame.pack(fill='x', pady=5, padx=10)
+            # Thêm ô nhập liệu cho URL
+            url_input_frame = tk.Frame(self.shared_urls_frame, bg='white')
+            url_input_frame.pack(fill='x', pady=5, padx=(10, 10))  # Lề trái và phải
 
-                        # URL
-                        tk.Label(url_frame,
-                                 text=f"URL: {url['url']}",
-                                 font=('Poppins', 11),
-                                 bg='white').pack(anchor='w')
+            tk.Label(url_input_frame, 
+                    text="Enter URL:", 
+                    font=('Poppins', 10), 
+                    wraplength=300,
+                    bg='white').pack(side='left', padx=(0, 10))  # Lề phải giữa nhãn và ô nhập liệu
 
-                        # Expires at
-                        tk.Label(url_frame,
-                                 text=f"Expires: {url['expires_at']}",
-                                 font=('Poppins', 9),
-                                 fg='gray').pack(anchor='w')
+            url_entry = tk.Entry(url_input_frame, font=('Poppins', 10), bg='#f1f3f5', width=18)
+            url_entry.pack(side='left', fill='x', expand=True, padx=(0, 10))  # Lề phải của ô nhập liệu
 
-                        # Access button
-                        tk.Button(url_frame,
-                                  text="Access",
-                                  font=('Poppins', 10),
-                                  bg='#28a745',
-                                  fg='white',
-                                  command=lambda u=url: self.access_shared_note(u)).pack(anchor='e')
+            # Nút để tải URLs
+            def load_shared_urls():
+                input_url = url_entry.get()  # Lấy giá trị từ ô nhập liệu
+                # Gọi hàm mới với username và input_url
+                response = get_shared_urls_with_input(self.token, username, input_url)
+                
+                # Xóa URLs cũ để load lại
+                for widget in self.shared_urls_frame.winfo_children():
+                    if widget != url_input_frame:  # Giữ lại ô nhập liệu
+                        widget.destroy()
+
+                if response.get("success"):
+                    url = response.get("shared_urls")
+                    if url:
+                            url_frame = tk.Frame(
+                                self.shared_urls_frame, bg='white')
+                            url_frame.pack(fill='x', pady=5, padx=(10, 10))  # Lề trái và phải
+
+                            # Giả sử bạn muốn chia URL thành hai dòng thủ công
+                            url_part1 = url['url'][:len(url['url'])//2]  # Phần đầu URL
+                            url_part2 = url['url'][len(url['url'])//2:]  # Phần sau URL
+
+                            tk.Label(
+                                url_frame,
+                                text=f"URL: {url_part1}",
+                                font=('Poppins', 11),
+                                bg='white'
+                            ).pack(anchor='w', padx=(0, 10))
+
+                            tk.Label(
+                                url_frame,
+                                text=f"{url_part2}",
+                                font=('Poppins', 11),
+                                bg='white'
+                            ).pack(anchor='w', padx=(0, 10))
+                            
+                            # Expires at
+                            tk.Label(url_frame,
+                                    text=f"Expires: {url['expires_at']}",
+                                    font=('Poppins', 9),
+                                    fg='gray').pack(anchor='w', padx=(0, 10))  # Lề phải
+
+                            # Access button
+                            tk.Button(url_frame,
+                                    text="Access",
+                                    font=('Poppins', 10),
+                                    bg='#28a745',
+                                    fg='white',
+                                    command=lambda u=url: self.access_shared_note(u)).pack(anchor='e', padx=(0, 10))  # Lề phải
+                    else:
+                        tk.Label(self.shared_urls_frame,
+                                text="No shared URLs",
+                                font=('Poppins', 11),
+                                bg='white').pack(pady=20, padx=(10, 10))  # Lề phải
                 else:
                     tk.Label(self.shared_urls_frame,
-                             text="No shared URLs",
-                             font=('Poppins', 11),
-                             bg='white').pack(pady=20)
+                            text="Failed to load shared URLs",
+                            font=('Poppins', 11),
+                            bg='white', fg='red').pack(pady=20, padx=(10, 10))  # Lề phải
+
+            load_button = tk.Button(url_input_frame,
+                                    text="Load URLs",
+                                    font=('Poppins', 10),
+                                    bg='#007bff',
+                                    fg='white',
+                                    command=load_shared_urls)
+            load_button.pack(side='right', padx=(10, 0))  # Lề phải của nút tải URL
+
         except Exception as e:
             print(f"Error loading shared URLs: {str(e)}")
 
-
     def access_shared_note(self, url):
+        if self.isAccess:
+            return
+        else:
+            self.isAccess = True
         try:
             response = get_sharing_notes(self.token, url['url'])
             if response.get("success"):
                 select_user_dialog = tk.Toplevel(self.root)
                 select_user_dialog.title("Shared Note")
                 select_user_dialog.geometry("400x150")
+
                 tk.Label(select_user_dialog,
                         text="Notes:",
                         font=('Poppins', 15)).pack(pady=10)
@@ -805,13 +904,16 @@ class App:
                               font=('Poppins', 11),
                               bg='#28a745',
                               fg='white',
-                              command=lambda n=note: self.handle_download_note(n)).pack(side='right', padx=2)
+                              command=lambda n=note: self.handle_download_shared_note(n, url['url'])).pack(side='right', padx=2)
+                def on_close():
+                    self.isAccess = False
+                    select_user_dialog.destroy()
+                select_user_dialog.protocol("WM_DELETE_WINDOW", on_close)
             else:
                 messagebox.showerror(
                             "Error", "URL đã hết hạn")
         except Exception as e:
             print(f"Error loading notes: {str(e)}")
-
 
     def create_share_url(self, note):
         try:
@@ -819,6 +921,14 @@ class App:
             select_user_dialog = tk.Toplevel(self.root)
             select_user_dialog.title("Select User")
             select_user_dialog.geometry("400x300")
+
+            # Căn giữa màn hình
+            select_user_dialog.update_idletasks()
+            width = select_user_dialog.winfo_width()
+            height = select_user_dialog.winfo_height()
+            x = (select_user_dialog.winfo_screenwidth() // 2) - (width // 2)
+            y = (select_user_dialog.winfo_screenheight() // 2) - (height // 2)
+            select_user_dialog.geometry(f'+{x}+{y}')
 
             # Label hướng dẫn
             tk.Label(select_user_dialog,
@@ -856,6 +966,14 @@ class App:
                 expiry_dialog = tk.Toplevel(self.root)
                 expiry_dialog.title("Set Expiry Date")
                 expiry_dialog.geometry("400x200")
+
+                # Căn giữa màn hình
+                expiry_dialog.update_idletasks()
+                width = expiry_dialog.winfo_width()
+                height = expiry_dialog.winfo_height()
+                x = (expiry_dialog.winfo_screenwidth() // 2) - (width // 2)
+                y = (expiry_dialog.winfo_screenheight() // 2) - (height // 2)
+                expiry_dialog.geometry(f'+{x}+{y}')
 
                 tk.Label(expiry_dialog,text=f"Nhập thời hạn cho user {user}:",
              font=('Poppins', 10)).pack(pady=10)

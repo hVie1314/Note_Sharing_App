@@ -6,6 +6,7 @@ from app import db
 from datetime import datetime, timedelta
 import os
 import pytz
+import hashlib
 
 def create_note(data):
     try:
@@ -115,7 +116,8 @@ def share_note(data):
             note_id=note_id,
             username=current_user.username,
             expires_at=expires_at,
-            user_key=key
+            user_key=key,
+            url=hashlib.sha256(f"{note_id}_{current_user.username}_{expires_at}".encode()).hexdigest()
         )
         db.session.add(shared_url)
         db.session.commit()
@@ -218,6 +220,9 @@ def delete_note(note_id):
         # Xóa file vật lý
         if os.path.exists(note.file_path):
             os.remove(note.file_path)
+        
+        # Xóa các shared URL liên quan đến note
+        SharedUrl.query.filter_by(note_id=note_id).delete()
             
         # Xóa record trong database
         db.session.delete(note)
@@ -235,27 +240,70 @@ def delete_note(note_id):
             "error": str(e)
         }), 500
     
-def get_shared_urls_by_user(username):
+def get_shared_urls(data):
     """Lấy danh sách URLs được chia sẻ cho user"""
     try:
-        shared_urls = SharedUrl.query.filter_by(username=username).all()
-        urls_list = []
+        username = data.get('username')
+        url = data.get('url')
+        shared_url = SharedUrl.query.filter_by(username=username, url = url ).first()
         current_time = datetime.now(pytz.timezone('Asia/Ho_Chi_Minh'))
-
-        for shared_url in shared_urls:
-            # Kiểm tra thời gian hết hạn
-            expires_at_aware = shared_url.expires_at.replace(tzinfo=pytz.FixedOffset(7 * 60))
-            print(current_time, expires_at_aware)
-            if current_time <= expires_at_aware:   
-                urls_list.append({
+        expires_at_aware = shared_url.expires_at.replace(tzinfo=pytz.FixedOffset(7 * 60))
+        print(current_time, expires_at_aware)
+        url_res = {}
+        if current_time <= expires_at_aware:   
+            url_res = {
                         'url': shared_url.url,
                         'expires_at': shared_url.expires_at.strftime("%Y-%m-%d %H:%M"),
                         'shared_by': shared_url.note.username
-                    })
+                    }
         return jsonify({
             "success": True,
-            "shared_urls": urls_list
+            "shared_url": url_res
         }), 200
     except Exception as e:
         print(e);
+        return jsonify({"error": str(e)}), 500
+    
+def download_note(note_id):
+    try:
+        # Verify token và user
+        token = request.headers.get('Authorization').split(" ")[1]
+        user = User.query.filter_by(token=token).first()
+        
+        note = Note.query.get(note_id)
+        if note:
+            # Check file path tồn tại
+            absolute_path = os.path.abspath(note.file_path)
+            if not os.path.exists(absolute_path):
+                return jsonify({"error": "File not found on server"}), 404
+
+            return jsonify({
+                "success": True,
+                "file_path": absolute_path,  # Trả về đường dẫn tuyệt đối
+                "filename": note.filename
+            }), 200
+        
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    
+def download_note(note_id):
+    try:
+        # Verify token và user
+        token = request.headers.get('Authorization').split(" ")[1]
+        user = User.query.filter_by(token=token).first()
+        
+        note = Note.query.get(note_id)
+        if note:
+            # Check file path tồn tại
+            absolute_path = os.path.abspath(note.file_path)
+            if not os.path.exists(absolute_path):
+                return jsonify({"error": "File not found on server"}), 404
+
+            return jsonify({
+                "success": True,
+                "file_path": absolute_path,  # Trả về đường dẫn tuyệt đối
+                "filename": note.filename
+            }), 200
+        
+    except Exception as e:
         return jsonify({"error": str(e)}), 500

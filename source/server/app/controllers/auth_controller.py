@@ -1,7 +1,7 @@
 from flask import jsonify
 from app import db
 import os
-from app.models.models import User
+from app.models.models import User, SharedUrl
 from werkzeug.security import generate_password_hash, check_password_hash
 from app.utils.token_utils import generate_token
 
@@ -44,6 +44,20 @@ def get_user_key(auth_token):
             return jsonify({"error": "User not found"}), 404
         
         return jsonify({"encryption_key": user.encryption_key}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    
+def get_user_sharing_key(auth_token,data):
+    try:
+        url = data.get('url');
+        user = User.query.filter_by(token=auth_token).first()
+        if not user:
+            return jsonify({"error": "User not found"}), 404
+        
+        url_key = SharedUrl.query.filter_by(url = url).first();
+        if not url_key:
+            return jsonify({"error": "Url not found"}), 404
+        return jsonify({"encryption_key": url_key.user_key}), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
