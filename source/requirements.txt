@@ -1,0 +1,11 @@
+APScheduler==3.11.0
+cryptography==41.0.5
+Flask==3.1.0
+flask_sqlalchemy==3.1.1
+Pillow==11.1.0
+PyJWT==2.10.1
+PyJWT==2.10.1
+python-dotenv==1.0.1
+pytz==2024.2
+Requests==2.32.3
+Werkzeug==3.1.3
