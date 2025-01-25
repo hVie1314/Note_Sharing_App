@@ -19,17 +19,25 @@ Note Sharing App là một ứng dụng cho phép người dùng đăng ký, đ�
 git clone https://github.com/hVie1314/Note_Sharing_App.git
 cd Note_Sharing_App/source
 ```
-### 2.Tạo virtual environment và cài đặt các gói cần thiết
+### 2. Tạo virtual environment và cài đặt các gói cần thiết
 ```python
 python -m venv venv
 source venv/bin/activate  # Trên Windows: venv\Scripts\activate
 pip install -r requirements.txt
 ```
-### 3.Khởi tạo cơ sở dữ liệu và chạy server
+### 3. Khởi tạo cơ sở dữ liệu 
+```python
+PASSWORD_DATABASE = 1234
+PORT = 5432
+USER = postgres
+HOST = localhost
+DATABASE = qlbn
+```
+### 4. Chạy server
 ```python
 python server/run.py
 ```
-### 4.Chạy client
+### 5. Chạy client
 ```python
 python client/app.py
 ```
