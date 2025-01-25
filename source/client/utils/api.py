@@ -74,7 +74,19 @@ def get_user_key(auth_token):
             "error": response.json().get("error", "Failed to retrieve user encryption key")
         } 
 
-
+def get_user_sharing_key(auth_token, url):
+    headers = {"Authorization": f"Bearer {auth_token}"}
+    response = requests.get(f"{BASE_URL}/auth/shared/user_key", headers=headers, json={'url': url})
+    if response.status_code == 200:
+        return {
+            "success": True,
+            "encryption_key": response.json().get("encryption_key")
+        }
+    else:
+        return {
+            "success": False,
+            "error": response.json().get("error", "Failed to retrieve user encryption key")
+        } 
 # features related to encryption file
 def upload_file(auth_token, username, file_path):
     try:
@@ -125,24 +137,78 @@ def upload_file(auth_token, username, file_path):
         
 def download_and_decrypt_file(auth_token, file_id):
     headers = {"Authorization": f"Bearer {auth_token}"}
-    response = requests.get(f"{BASE_URL}/download/{file_id}", headers=headers)
-    if response.status_code == 200:
-        encrypted_file_path = response.json().get("file_path")
+    temp_decrypted_file = None
+    try:
+        response = requests.get(f"{BASE_URL}/download/{file_id}", headers=headers)
+        if response.status_code == 200:
+            encrypted_file_path = response.json().get("file_path")
+            filename = response.json().get("filename")
 
-        # Lấy khóa mã hóa của người dùng từ server
-        user_key_response = get_user_key(auth_token)
-        if not user_key_response["success"]:
+            # Lấy user key để giải mã
+            user_key_response = get_user_key(auth_token)
+            if not user_key_response["success"]:
+                return {
+                    "success": False,
+                    "error": user_key_response["error"]
+                }
+            user_key = bytes.fromhex(user_key_response["encryption_key"])
+
+            # Giải mã file vào temporary file
+            temp_decrypted_file = decrypt_file(encrypted_file_path, user_key)
+
             return {
-                "success": False,
-                "error": user_key_response["error"]
+                "success": True,
+                "file_path": temp_decrypted_file,
+                "filename": filename
             }
-        user_key = bytes.fromhex(user_key_response["encryption_key"])
+    except Exception as e:
+        if temp_decrypted_file and os.path.exists(temp_decrypted_file):
+            try:
+                os.remove(temp_decrypted_file)
+            except:
+                pass
+        return {
+            "success": False,
+            "error": str(e)
+        }
 
-        decrypted_file_path = decrypt_file(encrypted_file_path, user_key)
-        return {"success": True, "file_path": decrypted_file_path}
-    else:
-        return {"success": False, "message": response.text}
 
+def download_and_decrypt_shared_file(auth_token, file_id, url):
+    headers = {"Authorization": f"Bearer {auth_token}"}
+    temp_decrypted_file = None
+    try:
+        response = requests.get(f"{BASE_URL}/download/{file_id}", headers=headers)
+        if response.status_code == 200:
+            encrypted_file_path = response.json().get("file_path")
+            filename = response.json().get("filename")
+
+            # Lấy user key để giải mã
+            user_key_response = get_user_sharing_key(auth_token, url)
+            if not user_key_response["success"]:
+                return {
+                    "success": False,
+                    "error": user_key_response["error"]
+                }
+            user_key = bytes.fromhex(user_key_response["encryption_key"])
+
+            # Giải mã file vào temporary file
+            temp_decrypted_file = decrypt_file(encrypted_file_path, user_key)
+
+            return {
+                "success": True,
+                "file_path": temp_decrypted_file,
+                "filename": filename
+            }
+    except Exception as e:
+        if temp_decrypted_file and os.path.exists(temp_decrypted_file):
+            try:
+                os.remove(temp_decrypted_file)
+            except:
+                pass
+        return {
+            "success": False,
+            "error": str(e)
+        }
 
 # features related to UI
 def get_users(auth_token):
@@ -188,6 +254,33 @@ def get_user_notes(auth_token):
             "error": str(e)
         }
     
+def get_sharing_notes(auth_token, url):
+    headers = {
+        "Authorization": f"Bearer {auth_token}"
+    }
+    try:
+        response = requests.get(
+            f"{BASE_URL}/notes/access",
+            headers=headers,
+            json={
+                "url_id": url,
+            }
+        )
+        
+        if response.status_code == 200:
+            return response.json()
+        else:
+            return {
+                "success": False,
+                "error": response.json().get("error", "Unknown error")
+            }
+            
+    except requests.exceptions.RequestException as e:
+        return {
+            "success": False,
+            "error": str(e)
+        }
+    
 def delete_note(auth_token, note_id):
     headers = {
         "Authorization": f"Bearer {auth_token}"
@@ -214,18 +307,29 @@ def delete_note(auth_token, note_id):
             "error": str(e)
         }
     
-def create_share_url(auth_token, note_id, days):
+def create_share_url(auth_token, note_id, days, hours, minutes):
     """Tạo URL chia sẻ cho note với thời hạn"""
     headers = {
         "Authorization": f"Bearer {auth_token}"
     }
     try:
+         # Lấy khóa mã hóa của người dùng từ server
+        user_key_response = get_user_key(auth_token)
+        if not user_key_response["success"]:
+            return {
+                "success": False,
+                "error": user_key_response["error"]
+            }
+        user_key = bytes.fromhex(user_key_response["encryption_key"])
         response = requests.post(
             f"{BASE_URL}/notes/share",
             headers=headers,
             json={
                 "note_id": note_id,
-                "expires_days": days  # Thêm số ngày hết hạn
+                "expires_days": days,  # Thêm số ngày hết hạn
+                "expires_hours": hours,
+                "expires_minutes": minutes,
+                "user_key": user_key_response["encryption_key"],
             }
         )
         
@@ -245,21 +349,25 @@ def create_share_url(auth_token, note_id, days):
             "error": str(e)
         }
     
-def get_shared_urls(auth_token, username):
+def get_shared_urls_with_input(auth_token, username, url):
     """Lấy danh sách URLs được chia sẻ cho user"""
     headers = {
         "Authorization": f"Bearer {auth_token}"
     }
     try:
         response = requests.get(
-            f"{BASE_URL}/notes/shared/{username}",
-            headers=headers
+            f"{BASE_URL}/notes/shared/url",
+            headers=headers,
+            json={
+                'username': username,
+                'url': url,
+            },
         )
         
         if response.status_code == 200:
             return {
                 "success": True,
-                "shared_urls": response.json().get("shared_urls", [])
+                "shared_urls": response.json().get("shared_url")
             }
         else:
             return {

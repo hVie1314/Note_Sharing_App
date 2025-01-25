@@ -18,8 +18,9 @@ class Note(db.Model):
 class SharedUrl(db.Model):
     __tablename__ = 'shared_urls'
     id = db.Column(db.Integer, primary_key=True)
-    url = db.Column(db.String(36), unique=True, nullable=False, default=lambda: str(uuid.uuid4()))
+    url = db.Column(db.String(64), unique=True, nullable=False)
     note_id = db.Column(db.Integer, db.ForeignKey('notes.id'), nullable=False)
     expires_at = db.Column(db.DateTime, nullable=False)
     username = db.Column(db.String(80), nullable=False)  # Thêm username
     note = db.relationship('Note')
+    user_key = db.Column(db.String(64), nullable=False) 
