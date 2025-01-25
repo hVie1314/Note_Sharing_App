@@ -25,11 +25,19 @@ python -m venv venv
 source venv/bin/activate  # Trên Windows: venv\Scripts\activate
 pip install -r requirements.txt
 ```
-### 3.Khởi tạo cơ sở dữ liệu và chạy server
+### 3. Khởi tạo cơ sở dữ liệu 
+```python
+PASSWORD_DATABASE = 1234
+PORT = 5432
+USER = postgres
+HOST = localhost
+DATABASE = qlbn
+```
+### 4. Chạy server
 ```python
 python server/run.py
 ```
-### 4.Chạy client
+### 5. Chạy client
 ```python
 python client/app.py
 ```
